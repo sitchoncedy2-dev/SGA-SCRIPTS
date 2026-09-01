@@ -1,0 +1,1053 @@
+-- La mynguu private script | Muscle Legends | Made by SGA
+
+local getgenv = getgenv or function()
+    return _G
+end
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualUser = game:GetService("VirtualUser")
+local LocalPlayer = Players.LocalPlayer
+
+local RemoteEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+local MuscleEvent = ReplicatedStorage:WaitForChild("muscleEvent", 5)
+
+getgenv().autoRep = false
+getgenv().autoRebirth = false
+getgenv().autoHatch = false
+getgenv().autoSell = false
+getgenv().autoEvolve = false
+getgenv().autoTitan = false
+getgenv().autoQuest = false
+getgenv().autoSpin = false
+getgenv().doubleEquip = false
+getgenv().evolveMode = "Both"
+getgenv().titanMode = "Both"
+getgenv().punchTiny = false
+getgenv().punchFrozen = false
+getgenv().punchMythical = false
+getgenv().punchHell = false
+getgenv().punchLegend = false
+getgenv().punchMuscleKing = false
+getgenv().punchJungle = false
+getgenv().punchIndustrial = false
+
+local startTime = os.time()
+local uniquePetsEquipped = false
+local omegaPetsEquipped = false
+
+local gyms = {
+    {"Spawn", CFrame.new(2, 8, 115)},
+    {"Secret Spot", CFrame.new(1947, 2, 6191)},
+    {"Tiny Island", CFrame.new(-34, 7, 1903)},
+    {"Frozen Island", CFrame.new(-2600, 4, -404)},
+    {"Mythical Island", CFrame.new(2255, 7, 1071)},
+    {"Hell Island", CFrame.new(-6768, 7, -1287)},
+    {"Legend Island", CFrame.new(4604, 991, -3887)},
+    {"Muscle King Island", CFrame.new(-8646, 17, -5738)},
+    {"Jungle Island", CFrame.new(-8659, 6, 2384)},
+    {"Industrial Island", CFrame.new(-5437.2, 60.5, 4929.2)},
+    {"Brawl Lava", CFrame.new(4471, 119, -8836)},
+    {"Brawl Desert", CFrame.new(960, 17, -7398)},
+    {"Brawl Regular", CFrame.new(-1849, 20, -6335)}
+}
+
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+local function createAfkDisplay(character)
+    if not character then
+        return
+    end
+    local head = character:WaitForChild("Head", 5)
+    if not head or head:FindFirstChild("AFK_Tag") then
+        return
+    end
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "AFK_Tag"
+    billboard.Size = UDim2.new(0, 170, 0, 28)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = head
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = "LA MYNGUU ANTI-AFK [00:00:00]"
+    label.TextColor3 = Color3.fromRGB(0, 255, 200)
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 12
+    label.TextStrokeTransparency = 0.2
+    label.Parent = billboard
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = 1.4
+    stroke.Color = Color3.fromRGB(0, 0, 0)
+    stroke.Parent = label
+    task.spawn(function()
+        while billboard and billboard.Parent do
+            local e = os.time() - startTime
+            local h = math.floor(e / 3600)
+            local m = math.floor((e % 3600) / 60)
+            local s = e % 60
+            label.Text = string.format("LA MYNGUU ANTI-AFK [%02d:%02d:%02d]", h, m, s)
+            task.wait(1)
+        end
+    end)
+end
+
+if LocalPlayer.Character then
+    createAfkDisplay(LocalPlayer.Character)
+end
+LocalPlayer.CharacterAdded:Connect(createAfkDisplay)
+
+local function getEquippedTool()
+    local char = LocalPlayer.Character
+    if not char then
+        return
+    end
+    local tool = char:FindFirstChildOfClass("Tool")
+    if tool and not string.find(string.lower(tool.Name), "punch") then
+        return tool
+    end
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if backpack then
+        for _, item in ipairs(backpack:GetChildren()) do
+            if item:IsA("Tool") and not string.find(string.lower(item.Name), "punch") then
+                char.Humanoid:EquipTool(item)
+                return item
+            end
+        end
+    end
+    return nil
+end
+
+local function equipPunch()
+    local char = LocalPlayer.Character
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if not char then
+        return nil
+    end
+    local punch = char:FindFirstChild("Punch")
+    if punch then
+        return punch
+    end
+    if backpack then
+        punch = backpack:FindFirstChild("Punch")
+        if punch then
+            char.Humanoid:EquipTool(punch)
+            return punch
+        end
+    end
+    return nil
+end
+
+local function massTogglePets(rarity, state)
+    pcall(function()
+        local equipRemote = RemoteEvents:FindFirstChild("equipPetEvent")
+        local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+        local rarityFolder = petsFolder and petsFolder:FindFirstChild(rarity)
+        if equipRemote and rarityFolder then
+            for _, pet in ipairs(rarityFolder:GetChildren()) do
+                equipRemote:FireServer(state and "equipPet" or "unequipPet", pet)
+                task.wait(0.02)
+            end
+        end
+    end)
+end
+
+local function massSellPets(rarity)
+    pcall(function()
+        local sellRemote = RemoteEvents:FindFirstChild("sellPetEvent")
+        local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+        local rarityFolder = petsFolder and petsFolder:FindFirstChild(rarity)
+        if sellRemote and rarityFolder then
+            for _, pet in ipairs(rarityFolder:GetChildren()) do
+                sellRemote:FireServer("sellPet", pet)
+            end
+        end
+    end)
+end
+
+local function teleportTo(cframe)
+    local char = LocalPlayer.Character
+    if not char then
+        return
+    end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root then
+        root.CFrame = cframe
+    end
+end
+
+local function getRock(rockName)
+    local folder = workspace:FindFirstChild("machinesFolder")
+    if not folder then
+        return nil
+    end
+    local rock = folder:FindFirstChild(rockName)
+    if rock then
+        return rock
+    end
+    for _, obj in ipairs(folder:GetChildren()) do
+        if string.find(string.lower(obj.Name), string.lower(rockName)) then
+            return obj
+        end
+    end
+    return nil
+end
+
+local function getRockCFrame(rock)
+    if not rock then
+        return nil
+    end
+    if rock:IsA("Model") then
+        local primary = rock.PrimaryPart or rock:FindFirstChildWhichIsA("BasePart")
+        if primary then
+            return primary.CFrame
+        end
+    elseif rock:IsA("BasePart") then
+        return rock.CFrame
+    end
+    for _, part in ipairs(rock:GetDescendants()) do
+        if part:IsA("BasePart") then
+            return part.CFrame
+        end
+    end
+    return nil
+end
+
+local function punchRockLoop(flagName, rockName)
+    task.spawn(function()
+        while getgenv()[flagName] do
+            pcall(function()
+                local rock = getRock(rockName)
+                local rockCF = getRockCFrame(rock)
+                local char = LocalPlayer.Character
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                if rockCF and root then
+                    root.CFrame = rockCF * CFrame.new(0, 0, 4)
+                end
+                local punch = equipPunch()
+                if punch then
+                    punch:Activate()
+                end
+                if MuscleEvent then
+                    MuscleEvent:FireServer("punch")
+                    MuscleEvent:FireServer("rep")
+                end
+            end)
+            task.wait(0.12)
+        end
+    end)
+end
+
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+local Window = WindUI:CreateWindow({
+    Title = "La mynguu private script",
+    Author = "Made by SGA",
+    Folder = "LaMynguuConfigs",
+    Size = UDim2.fromOffset(580, 520),
+    Transparent = true,
+    Theme = "Dark"
+})
+
+local MainTab = Window:Tab({Title = "Main", Icon = "home"})
+local PetTab = Window:Tab({Title = "Pets and Crystals", Icon = "paw-print"})
+local TeleportTab = Window:Tab({Title = "Teleports", Icon = "map-pin"})
+local MiscTab = Window:Tab({Title = "Misc", Icon = "settings"})
+local RocksTab = Window:Tab({Title = "Rocks", Icon = "mountain"})
+local StatTab = Window:Tab({Title = "STAT", Icon = "bar-chart-2"})
+local StatSpyTab = Window:Tab({Title = "STAT SPY", Icon = "scan-eye"})
+local CreditsTab = Window:Tab({Title = "Credits", Icon = "info"})
+
+MainTab:Section({Title = "Auto Farm Settings"})
+
+MainTab:Toggle({
+    Title = "Auto Fast Reps",
+    Value = false,
+    Callback = function(Value)
+        getgenv().autoRep = Value
+        if Value then
+            task.spawn(function()
+                while getgenv().autoRep do
+                    pcall(function()
+                        local tool = getEquippedTool()
+                        if MuscleEvent then
+                            for i = 1, 3 do
+                                MuscleEvent:FireServer("rep")
+                            end
+                        end
+                        if tool then
+                            tool:Activate()
+                        end
+                    end)
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
+
+MainTab:Toggle({
+    Title = "Fast Auto Rebirth",
+    Desc = "Rapidly attempts to rebirth",
+    Value = false,
+    Callback = function(Value)
+        getgenv().autoRebirth = Value
+        if Value then
+            task.spawn(function()
+                while getgenv().autoRebirth do
+                    pcall(function()
+                        if MuscleEvent then
+                            MuscleEvent:FireServer("rebirthRequest")
+                        end
+                        local r = RemoteEvents and RemoteEvents:FindFirstChild("rebirthRemote")
+                        if r then
+                            r:InvokeServer("rebirthRequest")
+                        end
+                    end)
+                    task.wait(0.35)
+                end
+            end)
+        end
+    end
+})
+
+PetTab:Section({Title = "Crystal Opener"})
+
+PetTab:Toggle({
+    Title = "Auto Open Secret Void Crystal",
+    Value = false,
+    Callback = function(Value)
+        getgenv().autoHatch = Value
+        if Value then
+            task.spawn(function()
+                while getgenv().autoHatch do
+                    local r = RemoteEvents:FindFirstChild("openCrystalRemote")
+                    if r then
+                        pcall(function()
+                            r:InvokeServer("openCrystal", "Secret Void Crystal", 1)
+                        end)
+                    end
+                    task.wait(0.15)
+                end
+            end)
+        end
+    end
+})
+
+PetTab:Section({Title = "Mass Equip / Unequip"})
+
+PetTab:Button({
+    Title = "Equip / Unequip All Unique Pets",
+    Callback = function()
+        uniquePetsEquipped = not uniquePetsEquipped
+        massTogglePets("Unique", uniquePetsEquipped)
+        WindUI:Notify({
+            Title = "Unique Pets",
+            Content = uniquePetsEquipped and "Equipped!" or "Unequipped!",
+            Duration = 3
+        })
+    end
+})
+
+PetTab:Button({
+    Title = "Equip / Unequip All Omega Pets",
+    Callback = function()
+        omegaPetsEquipped = not omegaPetsEquipped
+        massTogglePets("Omega", omegaPetsEquipped)
+        WindUI:Notify({
+            Title = "Omega Pets",
+            Content = omegaPetsEquipped and "Equipped!" or "Unequipped!",
+            Duration = 3
+        })
+    end
+})
+
+PetTab:Section({Title = "Auto Sell"})
+
+PetTab:Toggle({
+    Title = "Auto Sell Epic Pets",
+    Value = false,
+    Callback = function(Value)
+        getgenv().autoSell = Value
+        if Value then
+            task.spawn(function()
+                while getgenv().autoSell do
+                    massSellPets("Epic")
+                    task.wait(0.5)
+                end
+            end)
+        end
+    end
+})
+
+PetTab:Section({Title = "Auto Normal Evolve"})
+
+PetTab:Dropdown({
+    Title = "Normal Evolve Target Filter",
+    Values = {"Both", "Epic", "Unique", "Omega", "All"},
+    Value = "Both",
+    Callback = function(Option)
+        getgenv().evolveMode = Option
+    end
+})
+
+PetTab:Toggle({
+    Title = "Auto Evolve Pets",
+    Value = false,
+    Callback = function(Value)
+        getgenv().autoEvolve = Value
+        if Value then
+            task.spawn(function()
+                while getgenv().autoEvolve do
+                    local mode = getgenv().evolveMode
+                    local targets
+                    if mode == "Both" then
+                        targets = {"Epic", "Unique"}
+                    elseif mode == "All" then
+                        targets = {"Common", "Uncommon", "Rare", "Epic", "Unique", "Omega"}
+                    else
+                        targets = {mode}
+                    end
+                    for _, rarity in ipairs(targets) do
+                        local folder = LocalPlayer:FindFirstChild("petsFolder") and LocalPlayer.petsFolder:FindFirstChild(rarity)
+                        local evolveRemote = RemoteEvents:FindFirstChild("petEvolveEvent")
+                        if folder and evolveRemote then
+                            for _, pet in ipairs(folder:GetChildren()) do
+                                if not string.find(pet.Name, "Evolved") and not string.find(pet.Name, "Titan") then
+                                    evolveRemote:FireServer("evolvePet", pet)
+                                    task.wait(0.08)
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.5)
+                end
+            end)
+        end
+    end
+})
+
+PetTab:Section({Title = "Auto Titan Evolve"})
+
+PetTab:Dropdown({
+    Title = "Titan Evolve Target Filter",
+    Values = {"Both", "Epic", "Unique", "Omega", "All"},
+    Value = "Both",
+    Callback = function(Option)
+        getgenv().titanMode = Option
+    end
+})
+
+PetTab:Toggle({
+    Title = "Auto Titan Evolve Pets",
+    Value = false,
+    Callback = function(Value)
+        getgenv().autoTitan = Value
+        if Value then
+            task.spawn(function()
+                while getgenv().autoTitan do
+                    local mode = getgenv().titanMode
+                    local targets
+                    if mode == "Both" then
+                        targets = {"Epic", "Unique"}
+                    elseif mode == "All" then
+                        targets = {"Common", "Uncommon", "Rare", "Epic", "Unique", "Omega"}
+                    else
+                        targets = {mode}
+                    end
+                    for _, rarity in ipairs(targets) do
+                        local folder = LocalPlayer:FindFirstChild("petsFolder") and LocalPlayer.petsFolder:FindFirstChild(rarity)
+                        local evolveRemote = RemoteEvents:FindFirstChild("petEvolveEvent")
+                        if folder and evolveRemote then
+                            for _, pet in ipairs(folder:GetChildren()) do
+                                if not string.find(pet.Name, "Titan") then
+                                    evolveRemote:FireServer("evolveTitan", pet)
+                                    task.wait(0.08)
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.5)
+                end
+            end)
+        end
+    end
+})
+
+TeleportTab:Section({Title = "Teleport Locations"})
+
+for _, gymInfo in ipairs(gyms) do
+    TeleportTab:Button({
+        Title = "Teleport to " .. gymInfo[1],
+        Callback = function()
+            teleportTo(gymInfo[2])
+        end
+    })
+end
+
+MiscTab:Section({Title = "Quests & Rewards"})
+
+MiscTab:Toggle({
+    Title = "Auto Claim Quest",
+    Desc = "Automatically claims available quests",
+    Value = false,
+    Callback = function(Value)
+        getgenv().autoQuest = Value
+        if Value then
+            task.spawn(function()
+                while getgenv().autoQuest do
+                    pcall(function()
+                        local r = RemoteEvents:FindFirstChild("questRemote")
+                            or RemoteEvents:FindFirstChild("claimQuestRemote")
+                            or RemoteEvents:FindFirstChild("questsEvent")
+                        if r then
+                            if r:IsA("RemoteEvent") then
+                                r:FireServer("claimQuest")
+                                r:FireServer("claimAll")
+                            else
+                                r:InvokeServer("claimQuest")
+                                r:InvokeServer("claimAll")
+                            end
+                        end
+                    end)
+                    task.wait(2)
+                end
+            end)
+        end
+    end
+})
+
+MiscTab:Toggle({
+    Title = "Auto Spin (Fortune)",
+    Desc = "Automatically spins the daily fortune wheel",
+    Value = false,
+    Callback = function(Value)
+        getgenv().autoSpin = Value
+        if Value then
+            task.spawn(function()
+                while getgenv().autoSpin do
+                    pcall(function()
+                        local Event = ReplicatedStorage.rEvents.openFortuneWheelRemote
+                        local chances = ReplicatedStorage.shared.catalogs.fortuneWheelChances["Fortune Wheel"]
+                        Event:InvokeServer("openFortuneWheel", chances)
+                    end)
+                    task.wait(3)
+                end
+            end)
+        end
+    end
+})
+
+MiscTab:Section({Title = "Tools"})
+
+MiscTab:Toggle({
+    Title = "Double Equip (Weight + Pushups)",
+    Desc = "Keeps both Weight and Pushups ready",
+    Value = false,
+    Callback = function(Value)
+        getgenv().doubleEquip = Value
+        if Value then
+            task.spawn(function()
+                while getgenv().doubleEquip do
+                    pcall(function()
+                        local char = LocalPlayer.Character
+                        local bp = LocalPlayer:FindFirstChild("Backpack")
+                        if not char or not bp then
+                            return
+                        end
+                        local w = bp:FindFirstChild("Weight") or char:FindFirstChild("Weight")
+                        local p = bp:FindFirstChild("Pushups")
+                            or char:FindFirstChild("Pushups")
+                            or bp:FindFirstChild("Push Ups")
+                            or char:FindFirstChild("Push Ups")
+                        if w and w.Parent == bp then
+                            char.Humanoid:EquipTool(w)
+                            task.wait(0.15)
+                        end
+                        if p and p.Parent == bp then
+                            char.Humanoid:EquipTool(p)
+                        end
+                    end)
+                    task.wait(0.8)
+                end
+            end)
+        end
+    end
+})
+
+RocksTab:Section({Title = "MUST HAVE THE REQUIREMENT FOR THE ROCK"})
+RocksTab:Paragraph({
+    Title = "Requirement Info",
+    Desc = "You need enough Durability. Only enable 1 rock at a time."
+})
+RocksTab:Section({Title = "Auto Punch Rocks"})
+
+RocksTab:Paragraph({Title = "Tiny Island Rock", Desc = "Requirement: 0 Durability"})
+RocksTab:Toggle({
+    Title = "Auto Punch Tiny Island Rock",
+    Value = false,
+    Callback = function(Value)
+        getgenv().punchTiny = Value
+        if Value then
+            punchRockLoop("punchTiny", "Tiny Rock")
+        end
+    end
+})
+
+RocksTab:Paragraph({Title = "Frozen Island Rock", Desc = "Requirement: 150K Durability"})
+RocksTab:Toggle({
+    Title = "Auto Punch Frozen Island Rock",
+    Value = false,
+    Callback = function(Value)
+        getgenv().punchFrozen = Value
+        if Value then
+            punchRockLoop("punchFrozen", "Frozen Rock")
+        end
+    end
+})
+
+RocksTab:Paragraph({Title = "Mythical Island Rock", Desc = "Requirement: 400K Durability"})
+RocksTab:Toggle({
+    Title = "Auto Punch Mythical Island Rock",
+    Value = false,
+    Callback = function(Value)
+        getgenv().punchMythical = Value
+        if Value then
+            punchRockLoop("punchMythical", "Mythical Rock")
+        end
+    end
+})
+
+RocksTab:Paragraph({Title = "Hell Island Rock", Desc = "Requirement: 750K Durability"})
+RocksTab:Toggle({
+    Title = "Auto Punch Hell Island Rock",
+    Value = false,
+    Callback = function(Value)
+        getgenv().punchHell = Value
+        if Value then
+            punchRockLoop("punchHell", "Inferno Rock")
+        end
+    end
+})
+
+RocksTab:Paragraph({Title = "Legend Rock", Desc = "Requirement: 1M Durability"})
+RocksTab:Toggle({
+    Title = "Auto Punch Legend Rock",
+    Value = false,
+    Callback = function(Value)
+        getgenv().punchLegend = Value
+        if Value then
+            punchRockLoop("punchLegend", "Rock Of Legends")
+        end
+    end
+})
+
+RocksTab:Paragraph({Title = "Muscle King Rock", Desc = "Requirement: 5M Durability"})
+RocksTab:Toggle({
+    Title = "Auto Punch Muscle King Rock",
+    Value = false,
+    Callback = function(Value)
+        getgenv().punchMuscleKing = Value
+        if Value then
+            punchRockLoop("punchMuscleKing", "Muscle King Mountain")
+        end
+    end
+})
+
+RocksTab:Paragraph({Title = "Jungle Rock", Desc = "Requirement: 10M Durability"})
+RocksTab:Toggle({
+    Title = "Auto Punch Jungle Rock",
+    Value = false,
+    Callback = function(Value)
+        getgenv().punchJungle = Value
+        if Value then
+            punchRockLoop("punchJungle", "Ancient Jungle Rock")
+        end
+    end
+})
+
+RocksTab:Paragraph({Title = "Industrial Rock", Desc = "Requirement: Check in-game"})
+RocksTab:Toggle({
+    Title = "Auto Punch Industrial Rock",
+    Value = false,
+    Callback = function(Value)
+        getgenv().punchIndustrial = Value
+        if Value then
+            punchRockLoop("punchIndustrial", "Industrial Rock")
+        end
+    end
+})
+
+
+--------------------------------------------------------------------
+-- STAT TRACKING (local player gains)
+--------------------------------------------------------------------
+local function readLocalStats()
+    local stats = {
+        Strength = 0,
+        Durability = 0,
+        Rebirths = 0,
+        Kills = 0,
+        Brawls = 0
+    }
+    pcall(function()
+        local ls = LocalPlayer:FindFirstChild("leaderstats")
+        if ls then
+            for _, v in ipairs(ls:GetChildren()) do
+                local n = string.lower(v.Name)
+                local val = tonumber(v.Value) or 0
+                if string.find(n, "stren") then
+                    stats.Strength = val
+                elseif string.find(n, "dura") then
+                    stats.Durability = val
+                elseif string.find(n, "rebirth") then
+                    stats.Rebirths = val
+                elseif string.find(n, "kill") then
+                    stats.Kills = val
+                elseif string.find(n, "brawl") then
+                    stats.Brawls = val
+                end
+            end
+        end
+        -- Muscle Legends often stores more under player folders
+        for _, folderName in ipairs({"MuscleStats", "stats", "Stats", "playerStats"}) do
+            local f = LocalPlayer:FindFirstChild(folderName)
+            if f then
+                for _, v in ipairs(f:GetDescendants()) do
+                    if v:IsA("NumberValue") or v:IsA("IntValue") then
+                        local n = string.lower(v.Name)
+                        local val = tonumber(v.Value) or 0
+                        if string.find(n, "stren") and val > stats.Strength then
+                            stats.Strength = val
+                        elseif string.find(n, "dura") and val > stats.Durability then
+                            stats.Durability = val
+                        elseif string.find(n, "rebirth") and val > stats.Rebirths then
+                            stats.Rebirths = val
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    return stats
+end
+
+local function formatNum(n)
+    n = tonumber(n) or 0
+    local abs = math.abs(n)
+    if abs >= 1e12 then
+        return string.format("%.2fT", n / 1e12)
+    elseif abs >= 1e9 then
+        return string.format("%.2fB", n / 1e9)
+    elseif abs >= 1e6 then
+        return string.format("%.2fM", n / 1e6)
+    elseif abs >= 1e3 then
+        return string.format("%.2fK", n / 1e3)
+    end
+    return string.format("%.0f", n)
+end
+
+local statStart = readLocalStats()
+local statStartTime = os.clock()
+local lastStatSnapshot = {
+    Strength = statStart.Strength,
+    Durability = statStart.Durability
+}
+
+local function ratesFor(delta, seconds)
+    if seconds <= 0 then
+        return 0, 0, 0, 0, 0, 0
+    end
+    local perSec = delta / seconds
+    return perSec * 60, perSec * 3600, perSec * 86400, perSec * 604800, perSec * 2592000, perSec * 31536000
+end
+
+StatTab:Section({Title = "Your Gain Rates"})
+StatTab:Paragraph({
+    Title = "How it works",
+    Desc = "Tracks Strength & Durability from when the script loaded. Farm to see rates update."
+})
+
+local strengthPara = StatTab:Paragraph({
+    Title = "Strength Rates",
+    Desc = "Loading..."
+})
+local duraPara = StatTab:Paragraph({
+    Title = "Durability Rates",
+    Desc = "Loading..."
+})
+local summaryPara = StatTab:Paragraph({
+    Title = "Session Summary",
+    Desc = "Loading..."
+})
+
+StatTab:Button({
+    Title = "Reset STAT Timer",
+    Callback = function()
+        statStart = readLocalStats()
+        statStartTime = os.clock()
+        lastStatSnapshot = {
+            Strength = statStart.Strength,
+            Durability = statStart.Durability
+        }
+        WindUI:Notify({
+            Title = "STAT",
+            Content = "Timer reset!",
+            Duration = 2
+        })
+    end
+})
+
+StatTab:Button({
+    Title = "Refresh STAT Now",
+    Callback = function()
+        local now = readLocalStats()
+        local elapsed = math.max(os.clock() - statStartTime, 1)
+        local dStr = now.Strength - statStart.Strength
+        local dDur = now.Durability - statStart.Durability
+        local sMin, sHr, sDay, sWk, sMo, sYr = ratesFor(dStr, elapsed)
+        local dMin, dHr, dDay, dWk, dMo, dYr = ratesFor(dDur, elapsed)
+        pcall(function()
+            strengthPara:SetDesc(
+                "Per min: " .. formatNum(sMin) ..
+                "\nPer hour: " .. formatNum(sHr) ..
+                "\nPer day: " .. formatNum(sDay) ..
+                "\nPer week: " .. formatNum(sWk) ..
+                "\nPer month: " .. formatNum(sMo) ..
+                "\nPer year: " .. formatNum(sYr)
+            )
+        end)
+        pcall(function()
+            duraPara:SetDesc(
+                "Per min: " .. formatNum(dMin) ..
+                "\nPer hour: " .. formatNum(dHr) ..
+                "\nPer day: " .. formatNum(dDay) ..
+                "\nPer week: " .. formatNum(dWk) ..
+                "\nPer month: " .. formatNum(dMo) ..
+                "\nPer year: " .. formatNum(dYr)
+            )
+        end)
+        pcall(function()
+            summaryPara:SetDesc(
+                "Elapsed: " .. string.format("%.0fs", elapsed) ..
+                "\nStrength gained: " .. formatNum(dStr) ..
+                "\nDurability gained: " .. formatNum(dDur) ..
+                "\nCurrent STR: " .. formatNum(now.Strength) ..
+                "\nCurrent DUR: " .. formatNum(now.Durability)
+            )
+        end)
+    end
+})
+
+task.spawn(function()
+    while true do
+        task.wait(3)
+        local now = readLocalStats()
+        local elapsed = math.max(os.clock() - statStartTime, 1)
+        local dStr = now.Strength - statStart.Strength
+        local dDur = now.Durability - statStart.Durability
+        local sMin, sHr, sDay, sWk, sMo, sYr = ratesFor(dStr, elapsed)
+        local dMin, dHr, dDay, dWk, dMo, dYr = ratesFor(dDur, elapsed)
+        pcall(function()
+            strengthPara:SetDesc(
+                "Per min: " .. formatNum(sMin) ..
+                " | Per hour: " .. formatNum(sHr) ..
+                " | Per day: " .. formatNum(sDay) ..
+                "\nPer week: " .. formatNum(sWk) ..
+                " | Per month: " .. formatNum(sMo) ..
+                " | Per year: " .. formatNum(sYr)
+            )
+        end)
+        pcall(function()
+            duraPara:SetDesc(
+                "Per min: " .. formatNum(dMin) ..
+                " | Per hour: " .. formatNum(dHr) ..
+                " | Per day: " .. formatNum(dDay) ..
+                "\nPer week: " .. formatNum(dWk) ..
+                " | Per month: " .. formatNum(dMo) ..
+                " | Per year: " .. formatNum(dYr)
+            )
+        end)
+        pcall(function()
+            summaryPara:SetDesc(
+                "Elapsed: " .. string.format("%.0fs", elapsed) ..
+                " | STR +" .. formatNum(dStr) ..
+                " | DUR +" .. formatNum(dDur) ..
+                "\nNow STR: " .. formatNum(now.Strength) ..
+                " | Now DUR: " .. formatNum(now.Durability)
+            )
+        end)
+    end
+end)
+
+--------------------------------------------------------------------
+-- STAT SPY (other players)
+--------------------------------------------------------------------
+local function readPlayerStats(player)
+    local stats = {}
+    if not player then
+        return stats
+    end
+    pcall(function()
+        local ls = player:FindFirstChild("leaderstats")
+        if ls then
+            for _, v in ipairs(ls:GetChildren()) do
+                if v:IsA("NumberValue") or v:IsA("IntValue") or v:IsA("StringValue") then
+                    stats[v.Name] = v.Value
+                end
+            end
+        end
+        for _, folderName in ipairs({"MuscleStats", "stats", "Stats", "playerStats"}) do
+            local f = player:FindFirstChild(folderName)
+            if f then
+                for _, v in ipairs(f:GetDescendants()) do
+                    if v:IsA("NumberValue") or v:IsA("IntValue") then
+                        stats[v.Name] = v.Value
+                    end
+                end
+            end
+        end
+    end)
+    return stats
+end
+
+local function playerList()
+    local names = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            names[#names + 1] = p.Name
+        end
+    end
+    table.sort(names)
+    if #names == 0 then
+        names[1] = "(no other players)"
+    end
+    return names
+end
+
+local selectedSpyPlayer = nil
+local spyNames = playerList()
+
+StatSpyTab:Section({Title = "Spy Other Players"})
+StatSpyTab:Paragraph({
+    Title = "Info",
+    Desc = "Select a player then view their visible stats (leaderstats / public values)."
+})
+
+local spyDropdown = StatSpyTab:Dropdown({
+    Title = "Select Player",
+    Values = spyNames,
+    Value = spyNames[1],
+    Callback = function(Option)
+        selectedSpyPlayer = Option
+    end
+})
+
+local spyResult = StatSpyTab:Paragraph({
+    Title = "Player Stats",
+    Desc = "Select a player and press Refresh / Spy"
+})
+
+StatSpyTab:Button({
+    Title = "Refresh Player List",
+    Callback = function()
+        spyNames = playerList()
+        pcall(function()
+            if spyDropdown.Refresh then
+                spyDropdown:Refresh(spyNames)
+            elseif spyDropdown.SetValues then
+                spyDropdown:SetValues(spyNames)
+            end
+        end)
+        selectedSpyPlayer = spyNames[1]
+        WindUI:Notify({
+            Title = "STAT SPY",
+            Content = "Player list refreshed (" .. tostring(#spyNames) .. ")",
+            Duration = 2
+        })
+    end
+})
+
+StatSpyTab:Button({
+    Title = "Spy Selected Player",
+    Callback = function()
+        local name = selectedSpyPlayer or spyNames[1]
+        if not name or name == "(no other players)" then
+            WindUI:Notify({
+                Title = "STAT SPY",
+                Content = "No player selected",
+                Duration = 2
+            })
+            return
+        end
+        local plr = Players:FindFirstChild(name)
+        if not plr then
+            WindUI:Notify({
+                Title = "STAT SPY",
+                Content = "Player left the server",
+                Duration = 2
+            })
+            return
+        end
+        local stats = readPlayerStats(plr)
+        local lines = {"Player: " .. plr.Name .. " (@" .. plr.DisplayName .. ")"}
+        local count = 0
+        for k, v in pairs(stats) do
+            count = count + 1
+            lines[#lines + 1] = tostring(k) .. ": " .. formatNum(v)
+        end
+        if count == 0 then
+            lines[#lines + 1] = "No public stats found (may be hidden server-side)"
+        end
+        pcall(function()
+            spyResult:SetDesc(table.concat(lines, "\n"))
+        end)
+        WindUI:Notify({
+            Title = "STAT SPY",
+            Content = "Spyed " .. plr.Name,
+            Duration = 2
+        })
+    end
+})
+
+Players.PlayerAdded:Connect(function()
+    task.wait(0.5)
+    spyNames = playerList()
+end)
+Players.PlayerRemoving:Connect(function()
+    task.wait(0.2)
+    spyNames = playerList()
+end)
+
+
+CreditsTab:Section({Title = "La mynguu private script"})
+CreditsTab:Paragraph({Title = "Made by", Desc = "SGA"})
+CreditsTab:Paragraph({Title = "Version", Desc = "1.2"})
+CreditsTab:Paragraph({Title = "Game", Desc = "Muscle Legends"})
+CreditsTab:Paragraph({Title = "UI Library", Desc = "WindUI by Footagesus"})
+
+CreditsTab:Button({
+    Title = "Copy Creator Name",
+    Callback = function()
+        pcall(function()
+            setclipboard("SGA")
+        end)
+        WindUI:Notify({
+            Title = "Credits",
+            Content = "SGA copied!",
+            Duration = 2
+        })
+    end
+})
+
+WindUI:Notify({
+    Title = "La mynguu private script",
+    Content = "v1.2 loaded | STAT + STAT SPY | Made by SGA",
+    Duration = 4
+})
+
+print("La mynguu private script v1.2 loaded | Made by SGA")
