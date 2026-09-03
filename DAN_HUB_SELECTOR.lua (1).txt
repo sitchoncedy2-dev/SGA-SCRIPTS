@@ -1,0 +1,124 @@
+-- DAN HUB SELECTOR
+-- Made by SGA / SUN GOD NIKA | UI: WindUI
+
+local getgenv = getgenv or function()
+    return _G
+end
+
+if getgenv().DAN_HUB_SELECTOR_LOADED then
+    warn("DAN HUB SELECTOR already loaded")
+    return
+end
+getgenv().DAN_HUB_SELECTOR_LOADED = true
+
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+local Window = WindUI:CreateWindow({
+    Title = "DAN HUB SELECTOR",
+    Author = "Made by SGA / SUN GOD NIKA",
+    Folder = "DanHubSelector",
+    Size = UDim2.fromOffset(480, 360),
+    Transparent = true,
+    Theme = "Dark"
+})
+
+local ScriptsTab = Window:Tab({Title = "DAN HUB", Icon = "zap"})
+local CreditsTab = Window:Tab({Title = "Credits", Icon = "info"})
+
+local function loadUrl(name, url)
+    WindUI:Notify({
+        Title = "DAN HUB",
+        Content = "Loading " .. name .. "...",
+        Duration = 3
+    })
+    task.spawn(function()
+        local ok, err = pcall(function()
+            local src = game:HttpGet(url, true)
+            if type(src) ~= "string" or #src < 10 then
+                error("Empty response")
+            end
+            local fn, loadErr = loadstring(src)
+            if not fn then
+                error(tostring(loadErr))
+            end
+            fn()
+        end)
+        if ok then
+            WindUI:Notify({
+                Title = "DAN HUB",
+                Content = name .. " loaded!",
+                Duration = 3
+            })
+        else
+            WindUI:Notify({
+                Title = "DAN HUB",
+                Content = "Failed: " .. tostring(err),
+                Duration = 5
+            })
+            warn("[DAN HUB SELECTOR] " .. tostring(err))
+        end
+    end)
+end
+
+ScriptsTab:Section({Title = "DAN HUB Scripts"})
+ScriptsTab:Paragraph({
+    Title = "Select a game",
+    Desc = "Official DAN HUB by SGA / SUN GOD NIKA"
+})
+
+ScriptsTab:Button({
+    Title = "Muscle Legends (ML)",
+    Callback = function()
+        loadUrl(
+            "DAN HUB ML",
+            "https://raw.githubusercontent.com/sitchoncedy2-dev/SGA-SCRIPTS/refs/heads/main/DAN%20HUB"
+        )
+    end
+})
+
+ScriptsTab:Button({
+    Title = "Murder Mystery 2 (MM2)",
+    Callback = function()
+        loadUrl(
+            "DAN HUB MM2",
+            "https://raw.githubusercontent.com/sitchoncedy2-dev/SGA-SCRIPTS/refs/heads/main/MM2.txt"
+        )
+    end
+})
+
+ScriptsTab:Button({
+    Title = "Legends Of Speed (LOS)",
+    Callback = function()
+        loadUrl(
+            "DAN HUB LOS",
+            "https://raw.githubusercontent.com/sitchoncedy2-dev/SGA-SCRIPTS/refs/heads/main/Los%20script%20.txt"
+        )
+    end
+})
+
+CreditsTab:Section({Title = "DAN HUB"})
+CreditsTab:Paragraph({Title = "Made by", Desc = "SGA / SUN GOD NIKA"})
+CreditsTab:Paragraph({Title = "UI Library", Desc = "WindUI by Footagesus"})
+CreditsTab:Paragraph({Title = "Selector", Desc = "DAN HUB only (no Electron)"})
+
+CreditsTab:Button({
+    Title = "Copy Creator Name",
+    Callback = function()
+        pcall(function()
+            setclipboard("SGA / SUN GOD NIKA")
+        end)
+        WindUI:Notify({
+            Title = "Credits",
+            Content = "Copied!",
+            Duration = 2
+        })
+    end
+})
+
+WindUI:Notify({
+    Title = "DAN HUB SELECTOR",
+    Content = "Ready | Made by SGA",
+    Duration = 3
+})
+
+print("DAN HUB SELECTOR loaded | Made by SGA / SUN GOD NIKA")
