@@ -1,0 +1,587 @@
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local VIM = game:GetService("VirtualInputManager")
+local VU = game:GetService("VirtualUser")
+local TweenService = game:GetService("TweenService")
+local TeleportService = game:GetService("TeleportService")
+
+local LP = Players.LocalPlayer
+local mouse = LP:GetMouse()
+
+getgenv().dqr = getgenv().dqr or {}
+local cfg = getgenv().dqr
+
+cfg.autoFarm = cfg.autoFarm or false
+cfg.autoAttack = cfg.autoAttack or false
+cfg.killAura = cfg.killAura or false
+cfg.auraRange = cfg.auraRange or 25
+cfg.farmMode = cfg.farmMode or "Above" -- Above | Behind | Front | Orbit
+cfg.farmHeight = cfg.farmHeight or 8
+cfg.farmDist = cfg.farmDist or 6
+cfg.tpMode = cfg.tpMode or "Tween" -- Tween | Teleport
+cfg.tweenSpeed = cfg.tweenSpeed or 140
+cfg.autoSkill = cfg.autoSkill or false
+cfg.skillOnlyInCombat = cfg.skillOnlyInCombat or true
+cfg.skillKeys = cfg.skillKeys or {"1","2","3","4"}
+cfg.skillDelay = cfg.skillDelay or 0.35
+cfg.priorityRanged = cfg.priorityRanged or true
+cfg.autoStart = cfg.autoStart or false
+cfg.autoReplay = cfg.autoReplay or false
+cfg.replayDelay = cfg.replayDelay or 2
+cfg.autoLobby = cfg.autoLobby or false
+cfg.walkSpeed = cfg.walkSpeed or 16
+cfg.speedEnabled = cfg.speedEnabled or false
+cfg.infJump = cfg.infJump or false
+cfg.noclip = cfg.noclip or false
+cfg.antiAfk = cfg.antiAfk or true
+cfg.collectLoot = cfg.collectLoot or true
+cfg.hitDelay = cfg.hitDelay or 0.05
+
+local function char()
+	return LP.Character
+end
+
+local function hrp()
+	local c = char()
+	return c and c:FindFirstChild("HumanoidRootPart")
+end
+
+local function hum()
+	local c = char()
+	return c and c:FindFirstChildOfClass("Humanoid")
+end
+
+local function alive(model)
+	if not model or not model.Parent then return false end
+	local h = model:FindFirstChildOfClass("Humanoid")
+	if h then return h.Health > 0 end
+	return model:FindFirstChild("HumanoidRootPart") ~= nil or model.PrimaryPart ~= nil
+end
+
+local function rootOf(model)
+	if not model then return nil end
+	return model:FindFirstChild("HumanoidRootPart")
+		or model:FindFirstChild("Torso")
+		or model:FindFirstChild("UpperTorso")
+		or model.PrimaryPart
+		or model:FindFirstChildWhichIsA("BasePart")
+end
+
+local mobFolders = {
+	"Mobs","Mob","Enemies","Enemy","Monsters","Monster","NPCs","NPC",
+	"Units","Alive","WorkspaceMonsters","DungeonMobs","ClientMobs"
+}
+
+local function gatherMobs()
+	local list = {}
+	local seen = {}
+	local function add(m)
+		if not m or seen[m] then return end
+		if m:IsA("Model") and alive(m) and m ~= char() then
+			if Players:GetPlayerFromCharacter(m) then return end
+			seen[m] = true
+			list[#list+1] = m
+		end
+	end
+
+	for _, name in ipairs(mobFolders) do
+		local f = workspace:FindFirstChild(name)
+		if f then
+			for _, ch in ipairs(f:GetChildren()) do
+				add(ch)
+			end
+			for _, d in ipairs(f:GetDescendants()) do
+				if d:IsA("Model") and d:FindFirstChildOfClass("Humanoid") then
+					add(d)
+				end
+			end
+		end
+	end
+
+	-- fallback scan (capped)
+	local n = 0
+	for _, obj in ipairs(workspace:GetChildren()) do
+		if n > 80 then break end
+		if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
+			add(obj)
+			n += 1
+		end
+	end
+	return list
+end
+
+local function mobScore(m, myPos)
+	local r = rootOf(m)
+	if not r then return -1e9 end
+	local dist = (r.Position - myPos).Magnitude
+	local score = -dist
+	local name = string.lower(m.Name)
+	if cfg.priorityRanged then
+		if string.find(name, "mage") or string.find(name, "range") or string.find(name, "archer") or string.find(name, "wizard") then
+			score += 40
+		end
+	end
+	if string.find(name, "boss") then
+		score += 80
+	end
+	local h = m:FindFirstChildOfClass("Humanoid")
+	if h and h.MaxHealth > 0 then
+		score += (1 - h.Health / h.MaxHealth) * 10
+	end
+	return score
+end
+
+local function nearestMob()
+	local root = hrp()
+	if not root then return nil end
+	local myPos = root.Position
+	local best, bestS = nil, -1e9
+	for _, m in ipairs(gatherMobs()) do
+		local s = mobScore(m, myPos)
+		if s > bestS then
+			bestS = s
+			best = m
+		end
+	end
+	return best
+end
+
+local function farmOffset(targetRoot)
+	local mode = cfg.farmMode
+	local h = cfg.farmHeight
+	local d = cfg.farmDist
+	local look = targetRoot.CFrame.LookVector
+	if look.Magnitude < 0.05 then look = Vector3.new(0, 0, -1) else look = look.Unit end
+	if mode == "Above" then
+		return targetRoot.Position + Vector3.new(0, h, 0)
+	elseif mode == "Behind" then
+		return targetRoot.Position + look * d + Vector3.new(0, h * 0.35, 0)
+	elseif mode == "Front" then
+		return targetRoot.Position - look * d + Vector3.new(0, h * 0.35, 0)
+	elseif mode == "Orbit" then
+		local t = os.clock() * 2.2
+		return targetRoot.Position + Vector3.new(math.cos(t) * d, h * 0.5, math.sin(t) * d)
+	end
+	return targetRoot.Position + Vector3.new(0, h, 0)
+end
+
+local function moveTo(pos)
+	local root = hrp()
+	if not root then return end
+	if cfg.tpMode == "Teleport" then
+		root.CFrame = CFrame.new(pos)
+		root.AssemblyLinearVelocity = Vector3.zero
+		return
+	end
+	local dist = (root.Position - pos).Magnitude
+	if dist < 4 then
+		root.CFrame = CFrame.new(pos)
+		return
+	end
+	local t = math.clamp(dist / math.max(cfg.tweenSpeed, 40), 0.05, 1.2)
+	pcall(function()
+		TweenService:Create(root, TweenInfo.new(t, Enum.EasingStyle.Linear), {CFrame = CFrame.new(pos)}):Play()
+	end)
+end
+
+local function equipWeapon()
+	local c = char()
+	local bag = LP:FindFirstChild("Backpack")
+	if not c or not bag then return end
+	local h = hum()
+	if not h then return end
+	if c:FindFirstChildOfClass("Tool") then return end
+	for _, t in ipairs(bag:GetChildren()) do
+		if t:IsA("Tool") then
+			pcall(function() h:EquipTool(t) end)
+			return
+		end
+	end
+end
+
+local attackRemotes = {}
+local function cacheAttackRemotes()
+	table.clear(attackRemotes)
+	local function scan(inst, depth)
+		if depth > 5 then return end
+		for _, ch in ipairs(inst:GetChildren()) do
+			local n = string.lower(ch.Name)
+			if ch:IsA("RemoteEvent") or ch:IsA("RemoteFunction") then
+				if string.find(n, "attack") or string.find(n, "swing") or string.find(n, "damage")
+					or string.find(n, "combat") or string.find(n, "hit") or string.find(n, "ability")
+					or string.find(n, "skill") or string.find(n, "cast") or string.find(n, "use") then
+					attackRemotes[#attackRemotes+1] = ch
+				end
+			end
+			scan(ch, depth + 1)
+		end
+	end
+	pcall(scan, RS, 0)
+end
+cacheAttackRemotes()
+
+local function fireAttack()
+	equipWeapon()
+	local tool = char() and char():FindFirstChildOfClass("Tool")
+	if tool then
+		pcall(function() tool:Activate() end)
+	end
+	for _, rem in ipairs(attackRemotes) do
+		pcall(function()
+			if rem:IsA("RemoteEvent") then
+				rem:FireServer()
+			else
+				rem:InvokeServer()
+			end
+		end)
+	end
+	pcall(function()
+		VU:CaptureController()
+		VU:ClickButton1(Vector2.new(0, 0))
+	end)
+end
+
+local function pressKey(key)
+	pcall(function()
+		VIM:SendKeyEvent(true, key, false, game)
+		task.wait(0.03)
+		VIM:SendKeyEvent(false, key, false, game)
+	end)
+end
+
+local function tryClickButtons(names)
+	local pg = LP:FindFirstChild("PlayerGui")
+	if not pg then return end
+	for _, g in ipairs(pg:GetDescendants()) do
+		if g:IsA("TextButton") or g:IsA("ImageButton") then
+			local t = string.lower((g.Text or g.Name or ""))
+			for _, n in ipairs(names) do
+				if string.find(t, string.lower(n)) and g.Visible and g.AbsoluteSize.X > 0 then
+					pcall(function()
+						firesignal(g.MouseButton1Click)
+					end)
+					pcall(function()
+						g.MouseButton1Click:Fire()
+					end)
+				end
+			end
+		end
+	end
+end
+
+local function collectNearbyLoot()
+	if not cfg.collectLoot then return end
+	local root = hrp()
+	if not root then return end
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj:IsA("ProximityPrompt") then
+			local pn = string.lower(obj.Name .. (obj.Parent and obj.Parent.Name or ""))
+			if string.find(pn, "loot") or string.find(pn, "chest") or string.find(pn, "pickup") or string.find(pn, "item") then
+				local part = obj.Parent and (obj.Parent:IsA("BasePart") and obj.Parent or obj.Parent:FindFirstChildWhichIsA("BasePart"))
+				if part and (part.Position - root.Position).Magnitude < 40 then
+					if fireproximityprompt then
+						pcall(fireproximityprompt, obj)
+					end
+				end
+			end
+		end
+	end
+end
+
+-- anti afk
+if cfg.antiAfk then
+	LP.Idled:Connect(function()
+		pcall(function()
+			VU:CaptureController()
+			VU:ClickButton2(Vector2.new())
+		end)
+	end)
+end
+
+-- noclip
+RunService.Stepped:Connect(function()
+	if not cfg.noclip then return end
+	local c = char()
+	if not c then return end
+	for _, p in ipairs(c:GetDescendants()) do
+		if p:IsA("BasePart") then
+			p.CanCollide = false
+		end
+	end
+end)
+
+-- speed
+task.spawn(function()
+	while true do
+		task.wait(0.4)
+		if cfg.speedEnabled then
+			local h = hum()
+			if h then h.WalkSpeed = cfg.walkSpeed end
+		end
+	end
+end)
+
+-- inf jump
+UIS.JumpRequest:Connect(function()
+	if not cfg.infJump then return end
+	local h = hum()
+	if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+end)
+
+-- main farm
+task.spawn(function()
+	while true do
+		task.wait(cfg.hitDelay)
+		if not (cfg.autoFarm or cfg.killAura or cfg.autoAttack) then
+			task.wait(0.2)
+			continue
+		end
+		local target = nearestMob()
+		local root = hrp()
+		if not root then continue end
+
+		if target and cfg.autoFarm then
+			local tr = rootOf(target)
+			if tr then
+				moveTo(farmOffset(tr))
+				root.CFrame = CFrame.new(root.Position, tr.Position)
+			end
+		end
+
+		if target and (cfg.autoAttack or cfg.autoFarm or cfg.killAura) then
+			local tr = rootOf(target)
+			local inRange = true
+			if cfg.killAura and tr then
+				inRange = (tr.Position - root.Position).Magnitude <= cfg.auraRange
+			end
+			if inRange or cfg.autoFarm then
+				fireAttack()
+			end
+		end
+
+		if cfg.autoSkill then
+			local fighting = target ~= nil
+			if not cfg.skillOnlyInCombat or fighting then
+				for _, k in ipairs(cfg.skillKeys) do
+					pressKey(k)
+					task.wait(cfg.skillDelay)
+				end
+			end
+		end
+
+		if cfg.collectLoot then
+			collectNearbyLoot()
+		end
+	end
+end)
+
+-- start / replay / lobby
+task.spawn(function()
+	while true do
+		task.wait(1)
+		if cfg.autoStart then
+			tryClickButtons({"start", "play", "create", "ready", "go"})
+		end
+		if cfg.autoReplay then
+			tryClickButtons({"replay", "again", "restart", "rejoin dungeon"})
+			task.wait(cfg.replayDelay)
+		end
+		if cfg.autoLobby then
+			tryClickButtons({"lobby", "leave", "return", "back to lobby"})
+		end
+	end
+end)
+
+-- UI
+local okLib, Rayfield = pcall(function()
+	return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+end)
+
+if not okLib or not Rayfield then
+	warn("[dqr] rayfield failed, running headless with getgenv().dqr flags")
+	return
+end
+
+local Window = Rayfield:CreateWindow({
+	Name = "DQR Farm",
+	LoadingTitle = "dungeon quest reborn",
+	LoadingSubtitle = "autofarm",
+	ConfigurationSaving = {Enabled = false},
+	KeySystem = false,
+})
+
+local Farm = Window:CreateTab("Farm", 4483362458)
+local Combat = Window:CreateTab("Combat", 4483362458)
+local Lobby = Window:CreateTab("Lobby", 4483362458)
+local Misc = Window:CreateTab("Misc", 4483362458)
+
+Farm:CreateToggle({
+	Name = "Auto Farm",
+	CurrentValue = false,
+	Callback = function(v) cfg.autoFarm = v end,
+})
+
+Farm:CreateDropdown({
+	Name = "Position",
+	Options = {"Above", "Behind", "Front", "Orbit"},
+	CurrentOption = {"Above"},
+	Callback = function(opt)
+		cfg.farmMode = type(opt) == "table" and opt[1] or opt
+	end,
+})
+
+Farm:CreateDropdown({
+	Name = "Move Mode",
+	Options = {"Tween", "Teleport"},
+	CurrentOption = {"Tween"},
+	Callback = function(opt)
+		cfg.tpMode = type(opt) == "table" and opt[1] or opt
+	end,
+})
+
+Farm:CreateSlider({
+	Name = "Height",
+	Range = {0, 30},
+	Increment = 1,
+	CurrentValue = 8,
+	Callback = function(v) cfg.farmHeight = v end,
+})
+
+Farm:CreateSlider({
+	Name = "Distance",
+	Range = {2, 25},
+	Increment = 1,
+	CurrentValue = 6,
+	Callback = function(v) cfg.farmDist = v end,
+})
+
+Farm:CreateSlider({
+	Name = "Tween Speed",
+	Range = {40, 300},
+	Increment = 10,
+	CurrentValue = 140,
+	Callback = function(v) cfg.tweenSpeed = v end,
+})
+
+Farm:CreateToggle({
+	Name = "Priority Ranged / Mages",
+	CurrentValue = true,
+	Callback = function(v) cfg.priorityRanged = v end,
+})
+
+Farm:CreateToggle({
+	Name = "Collect Loot / Chests",
+	CurrentValue = true,
+	Callback = function(v) cfg.collectLoot = v end,
+})
+
+Combat:CreateToggle({
+	Name = "Auto Attack",
+	CurrentValue = false,
+	Callback = function(v) cfg.autoAttack = v end,
+})
+
+Combat:CreateToggle({
+	Name = "Kill Aura",
+	CurrentValue = false,
+	Callback = function(v) cfg.killAura = v end,
+})
+
+Combat:CreateSlider({
+	Name = "Aura Range",
+	Range = {5, 60},
+	Increment = 1,
+	CurrentValue = 25,
+	Callback = function(v) cfg.auraRange = v end,
+})
+
+Combat:CreateSlider({
+	Name = "Hit Delay",
+	Range = {0.02, 0.3},
+	Increment = 0.01,
+	CurrentValue = 0.05,
+	Callback = function(v) cfg.hitDelay = v end,
+})
+
+Combat:CreateToggle({
+	Name = "Auto Skill",
+	CurrentValue = false,
+	Callback = function(v) cfg.autoSkill = v end,
+})
+
+Combat:CreateToggle({
+	Name = "Skills Only In Combat",
+	CurrentValue = true,
+	Callback = function(v) cfg.skillOnlyInCombat = v end,
+})
+
+Combat:CreateButton({
+	Name = "Refresh Attack Remotes",
+	Callback = function()
+		cacheAttackRemotes()
+		Rayfield:Notify({Title = "DQR", Content = "remotes: " .. tostring(#attackRemotes), Duration = 3})
+	end,
+})
+
+Lobby:CreateToggle({
+	Name = "Auto Start / Ready",
+	CurrentValue = false,
+	Callback = function(v) cfg.autoStart = v end,
+})
+
+Lobby:CreateToggle({
+	Name = "Auto Replay",
+	CurrentValue = false,
+	Callback = function(v) cfg.autoReplay = v end,
+})
+
+Lobby:CreateSlider({
+	Name = "Replay Delay",
+	Range = {0.5, 10},
+	Increment = 0.5,
+	CurrentValue = 2,
+	Callback = function(v) cfg.replayDelay = v end,
+})
+
+Lobby:CreateToggle({
+	Name = "Auto Back To Lobby",
+	CurrentValue = false,
+	Callback = function(v) cfg.autoLobby = v end,
+})
+
+Misc:CreateToggle({
+	Name = "WalkSpeed Enable",
+	CurrentValue = false,
+	Callback = function(v) cfg.speedEnabled = v end,
+})
+
+Misc:CreateSlider({
+	Name = "WalkSpeed",
+	Range = {16, 200},
+	Increment = 1,
+	CurrentValue = 16,
+	Callback = function(v) cfg.walkSpeed = v end,
+})
+
+Misc:CreateToggle({
+	Name = "Infinite Jump",
+	CurrentValue = false,
+	Callback = function(v) cfg.infJump = v end,
+})
+
+Misc:CreateToggle({
+	Name = "Noclip",
+	CurrentValue = false,
+	Callback = function(v) cfg.noclip = v end,
+})
+
+Misc:CreateToggle({
+	Name = "Anti AFK",
+	CurrentValue = true,
+	Callback = function(v) cfg.antiAfk = v end,
+})
+
+Rayfield:Notify({Title = "DQR", Content = "loaded", Duration = 4})
+print("[dqr] loaded | set flags on getgenv().dqr if needed")
