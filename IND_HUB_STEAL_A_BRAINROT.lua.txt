@@ -1,0 +1,647 @@
+--[[
+	IND HUB | Steal a Brainrot
+	Credits: SGA X MR GAMING
+	UI: WindUI
+	PlaceId: 109983668079237
+]]
+
+if not game:IsLoaded() then
+	game.Loaded:Wait()
+end
+
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local VU = game:GetService("VirtualUser")
+local UIS = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+
+local LP = Players.LocalPlayer
+
+pcall(function()
+	getgenv().IND_HUB_LOADED = nil
+end)
+
+local dead = false
+local conns = {}
+local function track(c)
+	if c then conns[#conns + 1] = c end
+	return c
+end
+
+local function findHRP()
+	local c = LP.Character
+	return c and c:FindFirstChild("HumanoidRootPart")
+end
+local function findHum()
+	local c = LP.Character
+	return c and c:FindFirstChildOfClass("Humanoid")
+end
+
+local function notify(title, msg)
+	print("[IND HUB]", title, msg)
+	pcall(function()
+		if getgenv().IND_HUB_NOTIFY then
+			getgenv().IND_HUB_NOTIFY(title, msg)
+		end
+	end)
+end
+
+-- State
+local priorityTargets = {}
+local autoDefense = false
+local semiInstant = false
+local autoSteal = false
+local targetSlot = 6
+local speedEnabled = false
+local speedValue = 28
+local moveSettings = false
+local stealDelay = 0.8
+local tpSpeed = 120
+local avoidHit = true
+local antiRagdoll = true
+local antiAfk = true
+local batAura = false
+local spamClosest = false
+local spamCmd = "bat"
+local baseLock = false
+local noclip = false
+local infJump = false
+
+local function GetNet(name)
+	local ok, res = pcall(function()
+		local net = RS:FindFirstChild("Packages") and RS.Packages:FindFirstChild("Networking")
+		if net and net:FindFirstChild(name) then return net:FindFirstChild(name) end
+		local r = RS:FindFirstChild(name, true)
+		return r
+	end)
+	return ok and res or nil
+end
+
+local function firePrompt(prompt)
+	if not prompt then return end
+	pcall(function()
+		prompt.HoldDuration = 0
+		prompt.MaxActivationDistance = 999
+		if fireproximityprompt then
+			fireproximityprompt(prompt)
+		end
+	end)
+end
+
+-- Find stealable brainrot prompts on plots / podiums
+local function FindStealPrompts()
+	local found = {}
+	local function scan(root)
+		if not root then return end
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("ProximityPrompt") then
+				local act = string.lower(d.ActionText or "")
+				local obj = string.lower(d.ObjectText or "")
+				local nm = string.lower(d.Name or "")
+				if act:find("steal") or act:find("take") or act:find("grab")
+					or obj:find("brainrot") or nm:find("steal")
+					or (d.Enabled and (act:find("pick") or act:find("collect"))) then
+					local part = d.Parent
+					if part:IsA("Attachment") then part = part.Parent end
+					if part and part:IsA("BasePart") then
+						found[#found + 1] = { prompt = d, part = part, label = d.ObjectText or d.ActionText or "Brainrot" }
+					end
+				end
+			end
+		end
+	end
+
+	pcall(function() scan(Workspace:FindFirstChild("Plots")) end)
+	pcall(function() scan(Workspace:FindFirstChild("Bases")) end)
+	pcall(function() scan(Workspace:FindFirstChild("AnimalPodiums")) end)
+	pcall(function()
+		for _, m in ipairs(Workspace:GetChildren()) do
+			if m:IsA("Model") or m:IsA("Folder") then
+				local n = string.lower(m.Name)
+				if n:find("plot") or n:find("base") or n:find("podium") or n:find("animal") then
+					scan(m)
+				end
+			end
+		end
+	end)
+
+	-- fallback: any enabled prompt near other bases
+	if #found == 0 then
+		pcall(function()
+			for _, d in ipairs(Workspace:GetDescendants()) do
+				if d:IsA("ProximityPrompt") and d.Enabled then
+					local part = d.Parent
+					if part:IsA("Attachment") then part = part.Parent end
+					if part and part:IsA("BasePart") then
+						found[#found + 1] = { prompt = d, part = part, label = d.ObjectText or d.ActionText or "?" }
+					end
+				end
+			end
+		end)
+	end
+	return found
+end
+
+local function IsOwnBase(part)
+	if not part then return false end
+	local hrp = findHRP()
+	-- attribute owner checks
+	local model = part
+	for _ = 1, 6 do
+		if not model then break end
+		local owner = model:GetAttribute("Owner") or model:GetAttribute("OwnerName") or model:GetAttribute("Player")
+		if owner and (owner == LP.Name or owner == LP.UserId) then return true end
+		model = model.Parent
+	end
+	return false
+end
+
+local function GetPriorityPrompt(list)
+	if #priorityTargets > 0 then
+		for _, item in ipairs(list) do
+			local model = item.part
+			for _ = 1, 8 do
+				if not model then break end
+				local owner = model:GetAttribute("Owner") or model:GetAttribute("OwnerName")
+				if owner then
+					for _, name in ipairs(priorityTargets) do
+						if tostring(owner) == name or string.find(string.lower(tostring(owner)), string.lower(name), 1, true) then
+							return item
+						end
+					end
+				end
+				-- check nearby player name in model name
+				local mn = string.lower(model.Name)
+				for _, name in ipairs(priorityTargets) do
+					if mn:find(string.lower(name), 1, true) then
+						return item
+					end
+				end
+				model = model.Parent
+			end
+		end
+	end
+	-- non-own first
+	for _, item in ipairs(list) do
+		if not IsOwnBase(item.part) then
+			return item
+		end
+	end
+	return list[1]
+end
+
+local function TweenTo(pos)
+	local hrp = findHRP()
+	if not hrp or not pos then return end
+	local dist = (hrp.Position - pos).Magnitude
+	local t = math.clamp(dist / math.max(tpSpeed, 50), 0.05, 2.5)
+	local tw = TweenService:Create(hrp, TweenInfo.new(t, Enum.EasingStyle.Linear), {
+		CFrame = CFrame.new(pos + Vector3.new(0, 2, 0)),
+	})
+	tw:Play()
+	tw.Completed:Wait()
+	hrp.AssemblyLinearVelocity = Vector3.zero
+end
+
+local function InstantTP(pos)
+	local hrp = findHRP()
+	if not hrp or not pos then return end
+	hrp.CFrame = CFrame.new(pos + Vector3.new(0, 2, 0))
+	hrp.AssemblyLinearVelocity = Vector3.zero
+end
+
+local function DoSteal(item, instant)
+	if not item or not item.prompt then return false end
+	local pos = item.part.Position
+	if instant then
+		InstantTP(pos)
+	else
+		TweenTo(pos)
+	end
+	task.wait(0.12)
+	firePrompt(item.prompt)
+	task.wait(0.15)
+	firePrompt(item.prompt)
+	-- also try common steal remotes
+	pcall(function()
+		for _, name in ipairs({
+			"Steal", "StealAnimal", "TakeBrainrot", "ClaimBrainrot",
+			"RE/Steal", "RF/Steal",
+		}) do
+			local r = GetNet(name)
+			if r then
+				if r:IsA("RemoteEvent") then
+					r:FireServer()
+				elseif r:IsA("RemoteFunction") then
+					r:InvokeServer()
+				end
+			end
+		end
+	end)
+	return true
+end
+
+local function InstantSteal()
+	local list = FindStealPrompts()
+	if #list == 0 then
+		notify("Steal", "No brainrots found")
+		return false
+	end
+	local target = GetPriorityPrompt(list)
+	if not target then
+		notify("Steal", "No valid target")
+		return false
+	end
+	notify("Steal", tostring(target.label))
+	return DoSteal(target, true)
+end
+
+local function StealSlot(slot)
+	local list = FindStealPrompts()
+	if #list == 0 then return InstantSteal() end
+	-- try index as slot
+	local idx = math.clamp(tonumber(slot) or 1, 1, #list)
+	return DoSteal(list[idx], true)
+end
+
+local function SelfRagdoll()
+	local h = findHum()
+	if h then pcall(function() h:ChangeState(Enum.HumanoidStateType.Physics) end) end
+end
+
+local function InstantReset()
+	local h = findHum()
+	if h then pcall(function() h.Health = 0 end) end
+end
+
+local function RagdollTech()
+	SelfRagdoll()
+	task.wait(0.12)
+	local h = findHum()
+	if h then pcall(function() h:ChangeState(Enum.HumanoidStateType.GettingUp) end) end
+end
+
+local function Rejoin()
+	pcall(function() TeleportService:Teleport(game.PlaceId, LP) end)
+end
+
+local function Leave()
+	pcall(function() game:Shutdown() end)
+end
+
+local function GetClosestPlayer()
+	local hrp = findHRP()
+	if not hrp then return nil end
+	local best, bestD = nil, math.huge
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LP and p.Character then
+			local t = p.Character:FindFirstChild("HumanoidRootPart")
+			if t then
+				local d = (t.Position - hrp.Position).Magnitude
+				if d < bestD then bestD, best = d, p end
+			end
+		end
+	end
+	return best
+end
+
+local function SpamClosest()
+	local t = GetClosestPlayer()
+	if not t then
+		notify("Spam", "No player")
+		return
+	end
+	notify("Spam", t.Name .. " | " .. spamCmd)
+	local thrp = t.Character and t.Character:FindFirstChild("HumanoidRootPart")
+	if thrp then InstantTP(thrp.Position) end
+	for _ = 1, 10 do
+		if spamCmd == "ragdoll" then
+			SelfRagdoll()
+		elseif spamCmd == "steal" then
+			InstantSteal()
+		else
+			-- bat / hit style if remote exists
+			pcall(function()
+				local r = GetNet("RE/BatSwing/Trigger") or GetNet("Hit") or GetNet("Attack")
+				if r and r:IsA("RemoteEvent") then r:FireServer() end
+			end)
+		end
+		task.wait(0.1)
+	end
+end
+
+local function TPSlot(n)
+	local plots = Workspace:FindFirstChild("Plots") or Workspace:FindFirstChild("Bases")
+	if plots then
+		local p = plots:FindFirstChild(tostring(n)) or plots:FindFirstChild("Plot" .. tostring(n))
+		if p then
+			local pos = p:GetPivot().Position
+			InstantTP(pos)
+			notify("Slot", "TP plot " .. tostring(n))
+			return
+		end
+	end
+	-- fallback: prompt list index
+	local list = FindStealPrompts()
+	if list[n] then
+		InstantTP(list[n].part.Position)
+		notify("Slot", "TP target " .. tostring(n))
+	else
+		notify("Slot", "Not found")
+	end
+end
+
+-- Loops
+task.spawn(function()
+	while not dead do
+		if autoSteal or semiInstant then
+			pcall(InstantSteal)
+			task.wait(stealDelay)
+		else
+			task.wait(0.3)
+		end
+	end
+end)
+
+task.spawn(function()
+	while not dead do
+		task.wait(0.35)
+		if speedEnabled then
+			local h = findHum()
+			if h then pcall(function() h.WalkSpeed = speedValue end) end
+		end
+	end
+end)
+
+task.spawn(function()
+	while not dead do
+		task.wait(0.05)
+		if (antiRagdoll or autoDefense) then
+			local h = findHum()
+			if h and h:GetState() == Enum.HumanoidStateType.Physics then
+				pcall(function() h:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+			end
+		end
+	end
+end)
+
+task.spawn(function()
+	while not dead do
+		if spamClosest then
+			pcall(SpamClosest)
+			task.wait(2)
+		else
+			task.wait(0.4)
+		end
+	end
+end)
+
+pcall(function()
+	track(UIS.JumpRequest:Connect(function()
+		if not infJump then return end
+		local h = findHum()
+		if h then pcall(function() h:ChangeState(Enum.HumanoidStateType.Jumping) end) end
+	end))
+end)
+
+pcall(function()
+	track(LP.Idled:Connect(function()
+		if not antiAfk then return end
+		pcall(function()
+			VU:CaptureController()
+			VU:ClickButton2(Vector2.new())
+		end)
+	end))
+end)
+
+-- noclip
+task.spawn(function()
+	while not dead do
+		RunService.Stepped:Wait()
+		if noclip then
+			local char = LP.Character
+			if char then
+				for _, p in ipairs(char:GetDescendants()) do
+					if p:IsA("BasePart") then
+						p.CanCollide = false
+					end
+				end
+			end
+		end
+	end
+end)
+
+-- UI
+local WindUI
+for _, u in ipairs({
+	"https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
+	"https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua",
+}) do
+	local ok, res = pcall(function() return loadstring(game:HttpGet(u))() end)
+	if ok and res then WindUI = res break end
+end
+
+if not WindUI then
+	local ok, res = pcall(function() return loadstring(game:HttpGet("https://sirius.menu/rayfield"))() end)
+	if ok and res then
+		local Window = res:CreateWindow({
+			Name = "IND HUB | Steal a Brainrot",
+			LoadingTitle = "IND HUB",
+			LoadingSubtitle = "SGA X MR GAMING",
+			KeySystem = false,
+			DisableRayfieldPrompts = true,
+			ConfigurationSaving = { Enabled = false },
+		})
+		local T = Window:CreateTab("Farm")
+		T:CreateToggle({ Name = "Auto Steal", CurrentValue = false, Callback = function(v) autoSteal = v end })
+		T:CreateToggle({ Name = "Semi Instant", CurrentValue = false, Callback = function(v) semiInstant = v end })
+		T:CreateButton({ Name = "Instant Steal", Callback = function() task.spawn(InstantSteal) end })
+		getgenv().IND_HUB_LOADED = true
+		print("[IND HUB] Rayfield fallback")
+		return
+	end
+	warn("[IND HUB] UI failed")
+	getgenv().IND_HUB_LOADED = true
+	return
+end
+
+getgenv().IND_HUB_NOTIFY = function(title, content)
+	pcall(function()
+		WindUI:Notify({ Title = tostring(title), Content = tostring(content), Duration = 3 })
+	end)
+end
+
+local Window = WindUI:CreateWindow({
+	Title = "IND HUB | Steal a Brainrot",
+	Author = "SGA X MR GAMING",
+	Folder = "IndHubSAB",
+	Size = UDim2.fromOffset(580, 440),
+	Transparent = true,
+	Theme = "Dark",
+})
+
+local FarmTab = Window:Tab({ Title = "Farm", Icon = "bird" })
+local PriorityTab = Window:Tab({ Title = "Priority", Icon = "star" })
+local SemiTab = Window:Tab({ Title = "Semi Instant", Icon = "zap" })
+local DefenseTab = Window:Tab({ Title = "Defense", Icon = "shield" })
+local ActionsTab = Window:Tab({ Title = "Actions", Icon = "gamepad" })
+local SpamTab = Window:Tab({ Title = "Spammer", Icon = "message-circle" })
+local SpeedTab = Window:Tab({ Title = "Speed", Icon = "gauge" })
+local CreditsTab = Window:Tab({ Title = "Credits", Icon = "info" })
+
+-- FARM
+FarmTab:Section({ Title = "Auto Steal" })
+FarmTab:Toggle({ Title = "Auto Steal", Value = false, Callback = function(v) autoSteal = v end })
+FarmTab:Slider({ Title = "Steal Delay", Value = { Min = 0.2, Max = 5, Default = 0.8 }, Callback = function(v) stealDelay = v end })
+FarmTab:Slider({ Title = "TP Speed", Value = { Min = 40, Max = 300, Default = 120 }, Callback = function(v) tpSpeed = v end })
+FarmTab:Button({
+	Title = "Instant Steal Once",
+	Callback = function()
+		task.spawn(function()
+			notify("IND HUB", InstantSteal() and "Stolen" or "Failed")
+		end)
+	end,
+})
+FarmTab:Section({ Title = "Server Slots / Plots" })
+FarmTab:Button({ Title = "TP Slot 1", Callback = function() task.spawn(function() TPSlot(1) end) end })
+FarmTab:Button({ Title = "TP Slot 2", Callback = function() task.spawn(function() TPSlot(2) end) end })
+FarmTab:Button({ Title = "TP Slot 3", Callback = function() task.spawn(function() TPSlot(3) end) end })
+
+-- PRIORITY
+local selectedPriority = nil
+local function playerList()
+	local n = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LP then n[#n + 1] = p.Name end
+	end
+	table.sort(n)
+	if #n == 0 then n = { "(none)" } end
+	return n
+end
+
+PriorityTab:Section({ Title = "Priority Targets" })
+PriorityTab:Dropdown({
+	Title = "Select Player",
+	Values = playerList(),
+	Value = nil,
+	Callback = function(v) selectedPriority = v end,
+})
+PriorityTab:Button({
+	Title = "Add to Priority",
+	Callback = function()
+		if selectedPriority and selectedPriority ~= "(none)" then
+			local exists = false
+			for _, x in ipairs(priorityTargets) do
+				if x == selectedPriority then exists = true break end
+			end
+			if not exists then
+				priorityTargets[#priorityTargets + 1] = selectedPriority
+				notify("Priority", "Added " .. selectedPriority)
+			end
+		end
+	end,
+})
+PriorityTab:Button({
+	Title = "Clear Priority",
+	Callback = function()
+		priorityTargets = {}
+		notify("Priority", "Cleared")
+	end,
+})
+PriorityTab:Button({
+	Title = "Refresh Players",
+	Callback = function()
+		notify("Priority", "Select player again after list updates")
+	end,
+})
+PriorityTab:Paragraph({
+	Title = "Info",
+	Desc = "Auto / Instant steal prioritizes brainrots near priority players when possible.",
+})
+
+-- SEMI INSTANT
+SemiTab:Section({ Title = "Semi Instant" })
+SemiTab:Toggle({ Title = "Activate Semi Instant", Value = false, Callback = function(v) semiInstant = v end })
+SemiTab:Slider({
+	Title = "Target Slot",
+	Value = { Min = 1, Max = 12, Default = 6 },
+	Callback = function(v) targetSlot = math.floor(v) end,
+})
+SemiTab:Button({
+	Title = "Do Instant Steal",
+	Callback = function()
+		task.spawn(function()
+			notify("IND HUB", InstantSteal() and "Done" or "No target")
+		end)
+	end,
+})
+SemiTab:Button({
+	Title = "Steal Target Slot",
+	Callback = function()
+		task.spawn(function()
+			notify("IND HUB", StealSlot(targetSlot) and "Slot ok" or "Miss")
+		end)
+	end,
+})
+
+-- DEFENSE
+DefenseTab:Section({ Title = "Auto Defense" })
+DefenseTab:Toggle({ Title = "Enabled", Value = false, Callback = function(v) autoDefense = v end })
+DefenseTab:Toggle({ Title = "Anti Ragdoll", Value = true, Callback = function(v) antiRagdoll = v end })
+DefenseTab:Toggle({ Title = "Avoid Hit", Value = true, Callback = function(v) avoidHit = v end })
+DefenseTab:Toggle({ Title = "Base Lock (local)", Value = false, Callback = function(v) baseLock = v end })
+DefenseTab:Toggle({ Title = "Noclip", Value = false, Callback = function(v) noclip = v end })
+DefenseTab:Toggle({ Title = "Anti AFK", Value = true, Callback = function(v) antiAfk = v end })
+
+-- ACTIONS
+ActionsTab:Section({ Title = "Actions" })
+ActionsTab:Button({ Title = "Self Ragdoll", Callback = SelfRagdoll })
+ActionsTab:Button({ Title = "Instant Reset", Callback = InstantReset })
+ActionsTab:Button({ Title = "Ragdoll Tech", Callback = RagdollTech })
+ActionsTab:Button({ Title = "Spam 1 (Ragdoll)", Callback = function()
+	task.spawn(function() for _ = 1, 8 do SelfRagdoll() task.wait(0.08) end end)
+end })
+ActionsTab:Button({ Title = "Spam 2 (Steal)", Callback = function()
+	task.spawn(function() for _ = 1, 5 do InstantSteal() task.wait(0.15) end end)
+end })
+ActionsTab:Button({ Title = "Rejoin", Callback = Rejoin })
+ActionsTab:Button({ Title = "Leave", Callback = Leave })
+
+-- SPAMMER
+SpamTab:Section({ Title = "Admin Spammer" })
+SpamTab:Dropdown({
+	Title = "Configure Command",
+	Values = { "bat", "ragdoll", "steal", "follow" },
+	Value = "bat",
+	Callback = function(v) spamCmd = v end,
+})
+SpamTab:Toggle({ Title = "Spam Closest Loop", Value = false, Callback = function(v) spamClosest = v end })
+SpamTab:Button({
+	Title = "Spam Closest Once",
+	Callback = function() task.spawn(SpamClosest) end,
+})
+
+-- SPEED
+SpeedTab:Section({ Title = "Speed" })
+SpeedTab:Toggle({ Title = "Enabled", Value = false, Callback = function(v) speedEnabled = v end })
+SpeedTab:Toggle({ Title = "Move Settings / Inf Jump", Value = false, Callback = function(v)
+	moveSettings = v
+	infJump = v
+end })
+SpeedTab:Slider({
+	Title = "WalkSpeed",
+	Value = { Min = 16, Max = 200, Default = 28 },
+	Callback = function(v) speedValue = v end,
+})
+
+-- CREDITS
+CreditsTab:Section({ Title = "Credits" })
+CreditsTab:Paragraph({ Title = "IND HUB", Desc = "SGA X MR GAMING" })
+CreditsTab:Paragraph({ Title = "Game", Desc = "Steal a Brainrot" })
+
+getgenv().IND_HUB_LOADED = true
+WindUI:Notify({ Title = "IND HUB", Content = "Steal a Brainrot ready | SGA X MR GAMING", Duration = 3 })
+print("[IND HUB] Steal a Brainrot loaded | SGA X MR GAMING")
