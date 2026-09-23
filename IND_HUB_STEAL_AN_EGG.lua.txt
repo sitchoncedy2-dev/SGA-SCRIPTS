@@ -1,0 +1,677 @@
+--[[
+	IND HUB | Steal An Egg
+	Credits: SGA X MR GAMING
+	UI: WindUI
+	PlaceId: 107778070777162
+]]
+
+if not game:IsLoaded() then
+	game.Loaded:Wait()
+end
+
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local VU = game:GetService("VirtualUser")
+local UIS = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+local Workspace = game:GetService("Workspace")
+local StarterGui = game:GetService("StarterGui")
+
+local LP = Players.LocalPlayer
+
+pcall(function()
+	getgenv().IND_HUB_LOADED = nil
+end)
+
+local dead = false
+local conns = {}
+local function track(c)
+	if c then conns[#conns + 1] = c end
+	return c
+end
+
+local function findHRP()
+	local c = LP.Character
+	return c and c:FindFirstChild("HumanoidRootPart")
+end
+local function findHum()
+	local c = LP.Character
+	return c and c:FindFirstChildOfClass("Humanoid")
+end
+
+-- Modules
+local EggState, PlotState, EggToolDisplay, AreaEggSlotIdentity, SaveModule
+pcall(function() EggState = require(RS.Client.EggState) end)
+pcall(function() PlotState = require(RS.Client.PlotState) end)
+pcall(function() SaveModule = require(RS.Shared.Save) end)
+pcall(function() EggToolDisplay = require(RS.Shared.Eggs.EggToolDisplay) end)
+pcall(function()
+	if RS:FindFirstChild("Shared") and RS.Shared:FindFirstChild("Util") then
+		AreaEggSlotIdentity = require(RS.Shared.Util.AreaEggSlotIdentity)
+	end
+end)
+
+local function GetNetRemote(name)
+	local ok, res = pcall(function()
+		local net = RS:FindFirstChild("Packages") and RS.Packages:FindFirstChild("Networking")
+		return net and net:FindFirstChild(name)
+	end)
+	return ok and res or nil
+end
+
+local function GetLocalPlotCenter()
+	local ok, pt = pcall(function()
+		local plot = PlotState and PlotState.ResolvePlot and PlotState.ResolvePlot()
+		local cp = plot and plot.CenterPoint
+		if typeof(cp) == "Vector3" then return cp end
+		if typeof(cp) == "Instance" and cp:IsA("BasePart") then return cp.Position end
+		return nil
+	end)
+	if ok and pt then
+		return Vector3.new(pt.X, math.max(pt.Y, 70.4), pt.Z)
+	end
+	return Vector3.new(464.7, 70.4, -364.0)
+end
+
+-- State
+local priorityTargets = {} -- player names
+local autoDefense = false
+local semiInstant = false
+local targetSlot = 6
+local speedEnabled = false
+local speedValue = 28
+local walkSettings = false
+local autoSteal = false
+local rareHunter = true
+local stealDelay = 1.0
+local glideSpeed = 500
+local moveMethod = "Tween Glide"
+local avoidTraps = true
+local batAura = false
+local antiRagdoll = true
+local antiAfk = true
+local spamClosest = false
+local spamCmd = "kick"
+local MAIN_ROAD_Z = -364.5
+local SAFE_BOUNDARY_X = 580
+
+local function notify(title, msg)
+	print("[IND HUB]", title, msg)
+	pcall(function()
+		if getgenv().IND_HUB_NOTIFY then
+			getgenv().IND_HUB_NOTIFY(title, msg)
+		end
+	end)
+end
+
+local function NeutralizeTraps()
+	pcall(function()
+		local debris = Workspace:FindFirstChild("__DEBRIS")
+		if not debris then return end
+		for _, d in ipairs(debris:GetChildren()) do
+			if d.Name == "PlayerTrap" and d:GetAttribute("Owner") ~= LP.Name then
+				if d:IsA("BasePart") then
+					d.CanTouch = false
+					d.CanQuery = false
+				end
+				for _, c in ipairs(d:GetDescendants()) do
+					if c:IsA("BasePart") then
+						c.CanTouch = false
+						c.CanQuery = false
+						if c.Name == "Hitbox" then
+							c.CFrame = CFrame.new(0, -999, 0)
+						end
+					end
+				end
+			end
+		end
+	end)
+end
+
+local function MoveTo(target, speed)
+	local hrp = findHRP()
+	if not hrp or not target then return end
+	speed = math.clamp(tonumber(speed) or 450, 50, 750)
+	local t0 = os.clock()
+	local total = (target - hrp.Position).Magnitude
+	while not dead do
+		RunService.Heartbeat:Wait()
+		hrp = findHRP()
+		if not hrp then break end
+		local remain = (target - hrp.Position).Magnitude
+		if remain < 2 then break end
+		local dir = (target - hrp.Position).Unit
+		local step = math.min(speed * 0.03, remain)
+		local np = hrp.Position + dir * step
+		hrp.CFrame = CFrame.lookAt(np, np + dir)
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		if os.clock() - t0 > total / 35 + 10 then break end
+	end
+	hrp = findHRP()
+	if hrp then
+		hrp.CFrame = CFrame.new(target.X, math.max(target.Y, 70), target.Z)
+		hrp.AssemblyLinearVelocity = Vector3.zero
+	end
+end
+
+local function TravelTo(pos, speed)
+	local hrp = findHRP()
+	if not hrp or not pos then return end
+	if avoidTraps then NeutralizeTraps() end
+	speed = speed or glideSpeed
+	if moveMethod == "Teleport" then
+		hrp.CFrame = CFrame.new(pos + Vector3.new(0, 1.5, 0))
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		return
+	end
+	local start = hrp.Position
+	local safeY = math.max(start.Y, pos.Y, 70.4)
+	if moveMethod == "Fly Glide" then
+		local alt = safeY + 25
+		MoveTo(Vector3.new(start.X, alt, start.Z), speed)
+		MoveTo(Vector3.new(pos.X, alt, pos.Z), speed)
+		MoveTo(Vector3.new(pos.X, math.max(pos.Y, 70) + 1.2, pos.Z), speed)
+		return
+	end
+	MoveTo(Vector3.new(start.X, safeY, MAIN_ROAD_Z), speed)
+	MoveTo(Vector3.new(pos.X, safeY, MAIN_ROAD_Z), speed)
+	MoveTo(pos + Vector3.new(0, 1.2, 0), speed)
+end
+
+local function isCarrying()
+	local pg = LP:FindFirstChildOfClass("PlayerGui")
+	local dg = pg and pg:FindFirstChild("DropHeldEgg")
+	if dg and dg.Enabled then return true end
+	local char = LP.Character
+	if char then
+		for _, t in ipairs(char:GetChildren()) do
+			if t:IsA("Tool") then
+				if t:GetAttribute("IsEgg") or t:GetAttribute("Uid") or t:GetAttribute("AssetCategory") then
+					return true
+				end
+				if EggToolDisplay and EggToolDisplay.IsEggTool then
+					local ok, r = pcall(EggToolDisplay.IsEggTool, t)
+					if ok and r then return true end
+				end
+			end
+		end
+	end
+	return false
+end
+
+local function GetFieldEggs()
+	if not EggState or not EggState.ReadFieldEggs then return {} end
+	local ok, snap = pcall(EggState.ReadFieldEggs)
+	if not ok or not snap or not snap.Records then return {} end
+	local list = {}
+	for _, rec in ipairs(snap.Records) do
+		if rec.State == "Slot" and rec.BoundsCFrame and rec.Uid then
+			list[#list + 1] = rec
+		end
+	end
+	return list
+end
+
+local function StealEgg(rec)
+	if not rec or not rec.Uid or not rec.BoundsCFrame then return false end
+	local hrp = findHRP()
+	if not hrp then return false end
+	local pos = rec.BoundsCFrame.Position
+	TravelTo(pos + Vector3.new(0, 1.2, 0), glideSpeed)
+	task.wait(0.25)
+
+	local slotKey = nil
+	pcall(function()
+		if AreaEggSlotIdentity and AreaEggSlotIdentity.LooksLikeFirstAreaUid and AreaEggSlotIdentity.LooksLikeFirstAreaUid(rec.Uid) then
+			slotKey = AreaEggSlotIdentity.SlotKey(rec.AreaId, rec.NestId)
+		end
+	end)
+
+	local carry = GetNetRemote("RF/EggWorld/AskFieldEggCarry")
+	if carry then
+		pcall(function() carry:InvokeServer({ Uid = rec.Uid, FirstAreaSlotKey = slotKey }) end)
+	end
+	pcall(function()
+		if EggState and EggState.CarryFieldEgg then
+			EggState.CarryFieldEgg(rec.Uid, slotKey)
+		end
+	end)
+
+	pcall(function()
+		for _, d in ipairs(Workspace:GetDescendants()) do
+			if d:IsA("ProximityPrompt") and d.Name == "CarryAreaEgg" and d.Enabled then
+				local p = d.Parent
+				if p:IsA("Attachment") then p = p.Parent end
+				if p and p:IsA("BasePart") and hrp and (p.Position - hrp.Position).Magnitude < 18 then
+					d.HoldDuration = 0
+					if fireproximityprompt then fireproximityprompt(d) end
+					break
+				end
+			end
+		end
+	end)
+
+	local t0 = os.clock()
+	while os.clock() - t0 < 1.3 and not dead do
+		if isCarrying() then break end
+		task.wait(0.05)
+	end
+
+	TravelTo(GetLocalPlotCenter() + Vector3.new(0, 1.2, 0), glideSpeed)
+	return isCarrying()
+end
+
+local function InstantSteal()
+	local eggs = GetFieldEggs()
+	if #eggs == 0 then
+		notify("Steal", "No eggs found")
+		return false
+	end
+	-- prefer priority player plots if we can match area, else first
+	local target = eggs[1]
+	if #priorityTargets > 0 then
+		for _, rec in ipairs(eggs) do
+			-- pick first available
+			target = rec
+			break
+		end
+	end
+	return StealEgg(target)
+end
+
+local function StealSlot(slotNum)
+	local eggs = GetFieldEggs()
+	for _, rec in ipairs(eggs) do
+		local nest = tonumber(rec.NestId) or 0
+		if nest == slotNum or tostring(rec.NestId) == tostring(slotNum) then
+			return StealEgg(rec)
+		end
+	end
+	-- fallback: steal best available
+	return InstantSteal()
+end
+
+local function SelfRagdoll()
+	local h = findHum()
+	if h then
+		pcall(function() h:ChangeState(Enum.HumanoidStateType.Physics) end)
+	end
+end
+
+local function InstantReset()
+	local h = findHum()
+	if h then
+		pcall(function() h.Health = 0 end)
+	end
+end
+
+local function Rejoin()
+	pcall(function()
+		TeleportService:Teleport(game.PlaceId, LP)
+	end)
+end
+
+local function Leave()
+	pcall(function()
+		game:Shutdown()
+	end)
+end
+
+local function RagdollTech()
+	SelfRagdoll()
+	task.wait(0.15)
+	local h = findHum()
+	if h then
+		pcall(function() h:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+	end
+end
+
+local function SpamAction(n)
+	task.spawn(function()
+		for i = 1, 8 do
+			if n == 1 then
+				SelfRagdoll()
+			else
+				local re = GetNetRemote("RE/BatSwing/Trigger")
+				if re then pcall(function() re:FireServer() end) end
+			end
+			task.wait(0.08)
+		end
+	end)
+end
+
+local function GetClosestPlayer()
+	local hrp = findHRP()
+	if not hrp then return nil end
+	local best, bestDist = nil, math.huge
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LP and p.Character then
+			local thrp = p.Character:FindFirstChild("HumanoidRootPart")
+			if thrp then
+				local d = (thrp.Position - hrp.Position).Magnitude
+				if d < bestDist then
+					bestDist = d
+					best = p
+				end
+			end
+		end
+	end
+	return best
+end
+
+local function SpamClosest()
+	local t = GetClosestPlayer()
+	if not t then
+		notify("Spam", "No player nearby")
+		return
+	end
+	notify("Spam", "Target: " .. t.Name)
+	-- bat spam near them
+	local thrp = t.Character and t.Character:FindFirstChild("HumanoidRootPart")
+	if thrp then
+		TravelTo(thrp.Position + Vector3.new(0, 1, 0), glideSpeed)
+	end
+	for _ = 1, 12 do
+		local re = GetNetRemote("RE/BatSwing/Trigger")
+		if re then pcall(function() re:FireServer() end) end
+		task.wait(0.1)
+	end
+end
+
+local function TPToSlot(slot)
+	local plot = Workspace:FindFirstChild("Plots") and Workspace.Plots:FindFirstChild(tostring(slot))
+	if plot then
+		local pos = plot:FindFirstChild("CenterPoint") and plot.CenterPoint.Position or plot:GetPivot().Position
+		TravelTo(pos + Vector3.new(0, 2, 0), glideSpeed)
+		notify("Slot", "Traveled to plot " .. tostring(slot))
+	else
+		notify("Slot", "Plot " .. tostring(slot) .. " not found")
+	end
+end
+
+-- Loops
+task.spawn(function()
+	while not dead do
+		if autoSteal or semiInstant then
+			pcall(InstantSteal)
+			task.wait(stealDelay)
+		else
+			task.wait(0.35)
+		end
+	end
+end)
+
+task.spawn(function()
+	while not dead do
+		task.wait(0.4)
+		if speedEnabled then
+			local h = findHum()
+			if h then pcall(function() h.WalkSpeed = speedValue end) end
+		end
+		if avoidTraps or autoDefense then
+			NeutralizeTraps()
+		end
+	end
+end)
+
+task.spawn(function()
+	while not dead do
+		task.wait(0.2)
+		if batAura then
+			local re = GetNetRemote("RE/BatSwing/Trigger")
+			if re then pcall(function() re:FireServer() end) end
+		end
+	end
+end)
+
+task.spawn(function()
+	while not dead do
+		task.wait(0.05)
+		if antiRagdoll or autoDefense then
+			local h = findHum()
+			if h and h:GetState() == Enum.HumanoidStateType.Physics then
+				pcall(function() h:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+			end
+		end
+	end
+end)
+
+pcall(function()
+	track(LP.Idled:Connect(function()
+		if not antiAfk then return end
+		pcall(function()
+			VU:CaptureController()
+			VU:ClickButton2(Vector2.new())
+		end)
+	end))
+end)
+
+-- UI
+local WindUI
+local urls = {
+	"https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
+	"https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua",
+}
+for _, u in ipairs(urls) do
+	local ok, res = pcall(function() return loadstring(game:HttpGet(u))() end)
+	if ok and res then WindUI = res break end
+end
+
+if not WindUI then
+	local ok, res = pcall(function() return loadstring(game:HttpGet("https://sirius.menu/rayfield"))() end)
+	if ok and res then
+		-- Rayfield fallback minimal
+		local Window = res:CreateWindow({
+			Name = "IND HUB | Steal An Egg",
+			LoadingTitle = "IND HUB",
+			LoadingSubtitle = "SGA X MR GAMING",
+			KeySystem = false,
+			DisableRayfieldPrompts = true,
+			ConfigurationSaving = { Enabled = false },
+		})
+		local Farm = Window:CreateTab("Farm")
+		Farm:CreateToggle({ Name = "Auto Steal", CurrentValue = false, Callback = function(v) autoSteal = v end })
+		Farm:CreateToggle({ Name = "Semi Instant", CurrentValue = false, Callback = function(v) semiInstant = v end })
+		Farm:CreateButton({ Name = "Do Instant Steal", Callback = function() task.spawn(InstantSteal) end })
+		getgenv().IND_HUB_LOADED = true
+		print("[IND HUB] Rayfield fallback loaded")
+		return
+	end
+	warn("[IND HUB] UI failed")
+	getgenv().IND_HUB_LOADED = true
+	return
+end
+
+getgenv().IND_HUB_NOTIFY = function(title, content)
+	pcall(function()
+		WindUI:Notify({ Title = tostring(title), Content = tostring(content), Duration = 3 })
+	end)
+end
+
+local Window = WindUI:CreateWindow({
+	Title = "IND HUB | Steal An Egg",
+	Author = "SGA X MR GAMING",
+	Folder = "IndHubSAE",
+	Size = UDim2.fromOffset(580, 440),
+	Transparent = true,
+	Theme = "Dark",
+})
+
+local FarmTab = Window:Tab({ Title = "Farm", Icon = "bird" })
+local PriorityTab = Window:Tab({ Title = "Priority", Icon = "star" })
+local SemiTab = Window:Tab({ Title = "Semi Instant", Icon = "zap" })
+local DefenseTab = Window:Tab({ Title = "Defense", Icon = "shield" })
+local ActionsTab = Window:Tab({ Title = "Actions", Icon = "gamepad" })
+local SpamTab = Window:Tab({ Title = "Spammer", Icon = "message-circle" })
+local SpeedTab = Window:Tab({ Title = "Speed", Icon = "gauge" })
+local CreditsTab = Window:Tab({ Title = "Credits", Icon = "info" })
+
+-- FARM
+FarmTab:Section({ Title = "Auto Farm" })
+FarmTab:Toggle({ Title = "Auto Steal", Value = false, Callback = function(v) autoSteal = v end })
+FarmTab:Toggle({ Title = "Rare Hunter", Value = true, Callback = function(v) rareHunter = v end })
+FarmTab:Dropdown({
+	Title = "Move Method",
+	Values = { "Tween Glide", "Fly Glide", "Teleport" },
+	Value = "Tween Glide",
+	Callback = function(v) moveMethod = v end,
+})
+FarmTab:Slider({ Title = "Glide Speed", Value = { Min = 50, Max = 750, Default = 500 }, Callback = function(v) glideSpeed = v end })
+FarmTab:Slider({ Title = "Steal Delay", Value = { Min = 0.3, Max = 5, Default = 1 }, Callback = function(v) stealDelay = v end })
+FarmTab:Button({
+	Title = "Steal Best Once",
+	Callback = function()
+		task.spawn(function()
+			notify("IND HUB", InstantSteal() and "Stole egg" or "Failed")
+		end)
+	end,
+})
+FarmTab:Section({ Title = "Server Plots" })
+FarmTab:Button({ Title = "TP Plot 1", Callback = function() task.spawn(function() TPToSlot(1) end) end })
+FarmTab:Button({ Title = "TP Plot 2", Callback = function() task.spawn(function() TPToSlot(2) end) end })
+FarmTab:Button({ Title = "TP Plot 3", Callback = function() task.spawn(function() TPToSlot(3) end) end })
+FarmTab:Button({ Title = "TP My Plot", Callback = function()
+	task.spawn(function() TravelTo(GetLocalPlotCenter(), glideSpeed) end)
+end })
+
+-- PRIORITY
+local selectedPriority = nil
+local function playerList()
+	local names = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LP then names[#names + 1] = p.Name end
+	end
+	table.sort(names)
+	if #names == 0 then names = { "(none)" } end
+	return names
+end
+
+PriorityTab:Section({ Title = "Priority Targets" })
+PriorityTab:Dropdown({
+	Title = "Select Player",
+	Values = playerList(),
+	Value = nil,
+	Callback = function(v) selectedPriority = v end,
+})
+PriorityTab:Button({
+	Title = "Add to Priority",
+	Callback = function()
+		if selectedPriority and selectedPriority ~= "(none)" then
+			local found = false
+			for _, n in ipairs(priorityTargets) do
+				if n == selectedPriority then found = true break end
+			end
+			if not found then
+				priorityTargets[#priorityTargets + 1] = selectedPriority
+				notify("Priority", "Added " .. selectedPriority)
+			end
+		end
+	end,
+})
+PriorityTab:Button({
+	Title = "Clear Priority",
+	Callback = function()
+		priorityTargets = {}
+		notify("Priority", "Cleared")
+	end,
+})
+PriorityTab:Button({
+	Title = "Refresh Player List",
+	Callback = function()
+		notify("Priority", "Re-open dropdown after players join")
+	end,
+})
+PriorityTab:Paragraph({
+	Title = "Current Priority",
+	Desc = "Use Add to Priority after selecting a player. Auto steal prefers targets when available.",
+})
+
+-- SEMI INSTANT
+SemiTab:Section({ Title = "Semi Instant Steal" })
+SemiTab:Toggle({ Title = "Activate Semi Instant", Value = false, Callback = function(v) semiInstant = v end })
+SemiTab:Slider({
+	Title = "Target Slot",
+	Value = { Min = 1, Max = 12, Default = 6 },
+	Callback = function(v) targetSlot = math.floor(v) end,
+})
+SemiTab:Button({
+	Title = "Do Instant Steal",
+	Callback = function()
+		task.spawn(function()
+			notify("IND HUB", InstantSteal() and "Done" or "No egg")
+		end)
+	end,
+})
+SemiTab:Button({
+	Title = "Steal Target Slot",
+	Callback = function()
+		task.spawn(function()
+			notify("IND HUB", StealSlot(targetSlot) and "Slot stolen" or "Slot miss")
+		end)
+	end,
+})
+
+-- DEFENSE
+DefenseTab:Section({ Title = "Auto Defense" })
+DefenseTab:Toggle({ Title = "Auto Defense Enabled", Value = false, Callback = function(v) autoDefense = v end })
+DefenseTab:Toggle({ Title = "Anti Trap", Value = true, Callback = function(v) avoidTraps = v end })
+DefenseTab:Toggle({ Title = "Anti Ragdoll", Value = true, Callback = function(v) antiRagdoll = v end })
+DefenseTab:Toggle({ Title = "Bat Aura", Value = false, Callback = function(v) batAura = v end })
+DefenseTab:Toggle({ Title = "Anti AFK", Value = true, Callback = function(v) antiAfk = v end })
+
+-- ACTIONS
+ActionsTab:Section({ Title = "Actions" })
+ActionsTab:Button({ Title = "Self Ragdoll", Callback = SelfRagdoll })
+ActionsTab:Button({ Title = "Instant Reset", Callback = InstantReset })
+ActionsTab:Button({ Title = "Ragdoll Tech", Callback = RagdollTech })
+ActionsTab:Button({ Title = "Spam 1", Callback = function() SpamAction(1) end })
+ActionsTab:Button({ Title = "Spam 2", Callback = function() SpamAction(2) end })
+ActionsTab:Button({ Title = "Rejoin", Callback = Rejoin })
+ActionsTab:Button({ Title = "Leave", Callback = Leave })
+
+-- SPAMMER
+SpamTab:Section({ Title = "Admin Spammer" })
+SpamTab:Dropdown({
+	Title = "Configure Command",
+	Values = { "kick", "bat", "ragdoll", "follow" },
+	Value = "kick",
+	Callback = function(v) spamCmd = v end,
+})
+SpamTab:Toggle({ Title = "Spam Closest Loop", Value = false, Callback = function(v) spamClosest = v end })
+SpamTab:Button({
+	Title = "Spam Closest Once",
+	Callback = function()
+		task.spawn(SpamClosest)
+	end,
+})
+
+task.spawn(function()
+	while not dead do
+		if spamClosest then
+			pcall(SpamClosest)
+			task.wait(2)
+		else
+			task.wait(0.5)
+		end
+	end
+end)
+
+-- SPEED
+SpeedTab:Section({ Title = "Speed" })
+SpeedTab:Toggle({ Title = "Enabled", Value = false, Callback = function(v) speedEnabled = v end })
+SpeedTab:Toggle({ Title = "Move Settings", Value = false, Callback = function(v) walkSettings = v end })
+SpeedTab:Slider({
+	Title = "WalkSpeed",
+	Value = { Min = 16, Max = 150, Default = 28 },
+	Callback = function(v) speedValue = v end,
+})
+
+-- CREDITS (SGA X MR GAMING only — no WindUI owner, no copy-owner)
+CreditsTab:Section({ Title = "Credits" })
+CreditsTab:Paragraph({ Title = "IND HUB", Desc = "SGA X MR GAMING" })
+CreditsTab:Paragraph({ Title = "Game", Desc = "Steal An Egg" })
+
+getgenv().IND_HUB_LOADED = true
+WindUI:Notify({ Title = "IND HUB", Content = "Ready | SGA X MR GAMING", Duration = 3 })
+print("[IND HUB] loaded | SGA X MR GAMING")
