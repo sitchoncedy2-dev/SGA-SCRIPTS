@@ -12,7 +12,7 @@ local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
-local CORRECT_KEY = "NovaHub"
+local CORRECT_KEY = "VSP"
 local GET_KEY_LINK = "https://discord.gg/nxsD6NdbR3"
 local MAX_ATTEMPTS = 5
 local LOCKOUT_SECONDS = 45
