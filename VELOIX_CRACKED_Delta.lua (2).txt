@@ -1,0 +1,710 @@
+--[[
+  VELOIX HUB — CRACKED (Delta)
+  Rebuilt from recovered remotes + string maps
+  Key: VSP
+]]
+
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local UIS = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+local StarterGui = game:GetService("StarterGui")
+
+local LP = Players.LocalPlayer
+local Mouse = LP:GetMouse()
+
+-- ===================== KEY =====================
+local VALID_KEYS = { VSP = true }
+local DISCORD = "https://discord.gg/yb6f2V8JSe"
+
+-- ===================== THEMES =====================
+local Themes = {
+    Dark = {
+        bg = Color3.fromRGB(16, 16, 22),
+        panel = Color3.fromRGB(24, 24, 32),
+        accent = Color3.fromRGB(120, 80, 255),
+        accent2 = Color3.fromRGB(80, 160, 255),
+        text = Color3.fromRGB(240, 240, 250),
+        muted = Color3.fromRGB(150, 150, 170),
+        btn = Color3.fromRGB(36, 36, 48),
+        btnOn = Color3.fromRGB(50, 140, 90),
+        stroke = Color3.fromRGB(60, 50, 100),
+    },
+    Ocean = {
+        bg = Color3.fromRGB(10, 18, 28),
+        panel = Color3.fromRGB(16, 28, 42),
+        accent = Color3.fromRGB(0, 180, 220),
+        accent2 = Color3.fromRGB(40, 120, 200),
+        text = Color3.fromRGB(230, 245, 255),
+        muted = Color3.fromRGB(120, 150, 170),
+        btn = Color3.fromRGB(22, 40, 58),
+        btnOn = Color3.fromRGB(20, 130, 110),
+        stroke = Color3.fromRGB(30, 90, 130),
+    },
+    Crimson = {
+        bg = Color3.fromRGB(22, 12, 14),
+        panel = Color3.fromRGB(36, 18, 22),
+        accent = Color3.fromRGB(220, 50, 70),
+        accent2 = Color3.fromRGB(255, 120, 80),
+        text = Color3.fromRGB(255, 235, 235),
+        muted = Color3.fromRGB(180, 140, 140),
+        btn = Color3.fromRGB(48, 24, 28),
+        btnOn = Color3.fromRGB(140, 40, 50),
+        stroke = Color3.fromRGB(100, 40, 50),
+    },
+    Emerald = {
+        bg = Color3.fromRGB(12, 20, 16),
+        panel = Color3.fromRGB(18, 32, 24),
+        accent = Color3.fromRGB(40, 200, 120),
+        accent2 = Color3.fromRGB(80, 220, 160),
+        text = Color3.fromRGB(230, 255, 240),
+        muted = Color3.fromRGB(130, 170, 150),
+        btn = Color3.fromRGB(28, 44, 34),
+        btnOn = Color3.fromRGB(30, 130, 80),
+        stroke = Color3.fromRGB(40, 100, 70),
+    },
+}
+local Theme = Themes.Dark
+local ThemeName = "Dark"
+
+-- ===================== STATE =====================
+local S = {
+    autoPunch = false,
+    autoRep = false,
+    punchDelay = 0.04,
+    autoRebirth = false,
+    rebirthDelay = 2,
+    speed = 16,
+    jump = 50,
+    noclip = false,
+    fly = false,
+    flySpeed = 60,
+    infiniteJump = false,
+    hand = "leftHand",
+}
+
+-- ===================== REMOTES =====================
+local rEvents = RS:FindFirstChild("rEvents")
+
+local function plrRemote(name)
+    return LP:FindFirstChild(name) or LP:WaitForChild(name, 3)
+end
+
+local muscleEvent, bodyMovementEvent, equipPowerUpEvent
+task.spawn(function()
+    muscleEvent = plrRemote("muscleEvent")
+    bodyMovementEvent = plrRemote("bodyMovementEvent")
+    equipPowerUpEvent = plrRemote("equipPowerUpEvent")
+end)
+
+local function RF(n)
+    return rEvents and rEvents:FindFirstChild(n)
+end
+local function RE(n)
+    return rEvents and rEvents:FindFirstChild(n)
+end
+
+local function fireMuscle(...)
+    if muscleEvent then pcall(function() muscleEvent:FireServer(...) end) end
+end
+
+local function punch()
+    S.hand = (S.hand == "leftHand") and "rightHand" or "leftHand"
+    fireMuscle("punch", S.hand)
+end
+
+local function rep()
+    fireMuscle("rep")
+end
+
+local function rebirth()
+    local r = RF("rebirthRemote")
+    if r then pcall(function() r:InvokeServer() end) end
+end
+
+local function claimDaily()
+    local r = RF("dailyRewardRemote")
+    if r then pcall(function() r:InvokeServer() end) end
+end
+
+local function claimFreeGift()
+    local r = RF("freeGiftClaimRemote")
+    if r then pcall(function() r:InvokeServer() end) end
+end
+
+local function openCrystal()
+    local r = RF("openCrystalRemote")
+    if r then pcall(function() r:InvokeServer() end) end
+end
+
+local function useCode(code)
+    local r = RF("codeRemote")
+    if r and code and #code > 0 then pcall(function() r:InvokeServer(code) end) end
+end
+
+local function areaTravel(area)
+    local r = RF("areaTravelRemote")
+    if r then pcall(function() r:InvokeServer(area) end) end
+end
+
+local function machineInteract()
+    local r = RF("machineInteractRemote")
+    if r then pcall(function() r:InvokeServer() end) end
+end
+
+local function sellPets()
+    local e = RE("sellPetEvent")
+    if e then pcall(function() e:FireServer() end) end
+end
+
+local function equipPet()
+    local e = RE("equipPetEvent")
+    if e then pcall(function() e:FireServer() end) end
+end
+
+local function evolvePet()
+    local e = RE("petEvolveEvent")
+    if e then pcall(function() e:FireServer() end) end
+end
+
+local function sellPowerUps()
+    local e = RE("sellPowerUpEvent")
+    if e then pcall(function() e:FireServer() end) end
+end
+
+local function evolvePowerUp()
+    local e = RE("evolvePowerUpEvent")
+    if e then pcall(function() e:FireServer() end) end
+end
+
+local function openWheel()
+    local r = RF("openFortuneWheelRemote")
+    if r then pcall(function() r:InvokeServer() end) end
+end
+
+local function ultimates()
+    local r = RF("ultimatesRemote")
+    if r then pcall(function() r:InvokeServer() end) end
+end
+
+local function groupReward()
+    local r = RF("groupRemote")
+    if r then pcall(function() r:InvokeServer() end) end
+end
+
+local function petCraft()
+    local r = RF("petCraftRemote")
+    if r then pcall(function() r:InvokeServer() end) end
+end
+
+local function petEnchant()
+    local r = RF("petEnchantRemote")
+    if r then pcall(function() r:InvokeServer() end) end
+end
+
+local function notify(title, text)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = title or "Veloix",
+            Text = text or "",
+            Duration = 3,
+        })
+    end)
+end
+
+-- ===================== LOOPS =====================
+task.spawn(function()
+    while true do
+        if S.autoPunch then punch() end
+        task.wait(S.punchDelay)
+    end
+end)
+task.spawn(function()
+    while true do
+        if S.autoRep then rep() end
+        task.wait(0.12)
+    end
+end)
+task.spawn(function()
+    while true do
+        if S.autoRebirth then rebirth() end
+        task.wait(S.rebirthDelay)
+    end
+end)
+
+local hum, hrp
+local function refresh()
+    local c = LP.Character
+    if not c then return end
+    hum = c:FindFirstChildOfClass("Humanoid")
+    hrp = c:FindFirstChild("HumanoidRootPart")
+end
+LP.CharacterAdded:Connect(function()
+    task.wait(0.4)
+    refresh()
+end)
+refresh()
+
+UIS.JumpRequest:Connect(function()
+    if S.infiniteJump and hum then
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
+    end
+end)
+
+RunService.Heartbeat:Connect(function()
+    refresh()
+    if hum then
+        pcall(function()
+            hum.WalkSpeed = S.speed
+            if hum.UseJumpPower ~= nil then
+                hum.UseJumpPower = true
+                hum.JumpPower = S.jump
+            else
+                hum.JumpHeight = S.jump / 5
+            end
+        end)
+    end
+    if S.noclip and LP.Character then
+        for _, p in ipairs(LP.Character:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = false end
+        end
+    end
+    if S.fly and hrp and hum then
+        local dir = Vector3.zero
+        local cam = workspace.CurrentCamera
+        if UIS:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.yAxis end
+        if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then dir -= Vector3.yAxis end
+        if dir.Magnitude > 0 then
+            hrp.AssemblyLinearVelocity = dir.Unit * S.flySpeed
+        else
+            hrp.AssemblyLinearVelocity = Vector3.zero
+        end
+        hum.PlatformStand = true
+    elseif hum then
+        hum.PlatformStand = false
+    end
+end)
+
+-- ===================== UI HELPERS =====================
+local function corner(p, r)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r or 8)
+    c.Parent = p
+    return c
+end
+
+local function stroke(p, col, t)
+    local s = Instance.new("UIStroke")
+    s.Color = col or Theme.stroke
+    s.Thickness = t or 1
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = p
+    return s
+end
+
+local function applyTheme()
+    -- recolor main pieces via tags
+    for _, v in ipairs(gui:GetDescendants()) do
+        if v:GetAttribute("ThemeRole") == "bg" then
+            v.BackgroundColor3 = Theme.bg
+        elseif v:GetAttribute("ThemeRole") == "panel" then
+            v.BackgroundColor3 = Theme.panel
+        elseif v:GetAttribute("ThemeRole") == "accent" then
+            if v:IsA("TextLabel") or v:IsA("TextButton") then
+                v.TextColor3 = Theme.accent
+            else
+                v.BackgroundColor3 = Theme.accent
+            end
+        elseif v:GetAttribute("ThemeRole") == "text" then
+            v.TextColor3 = Theme.text
+        elseif v:GetAttribute("ThemeRole") == "muted" then
+            v.TextColor3 = Theme.muted
+        elseif v:GetAttribute("ThemeRole") == "btn" then
+            if not v:GetAttribute("On") then
+                v.BackgroundColor3 = Theme.btn
+            end
+        elseif v:GetAttribute("ThemeRole") == "stroke" and v:IsA("UIStroke") then
+            v.Color = Theme.stroke
+        end
+    end
+end
+
+-- ===================== BUILD UI =====================
+local gui = Instance.new("ScreenGui")
+gui.Name = "VeloixCracked"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+pcall(function() gui.Parent = CoreGui end)
+if not gui.Parent then gui.Parent = LP:WaitForChild("PlayerGui") end
+
+-- destroy old
+for _, g in ipairs(CoreGui:GetChildren()) do
+    if g.Name == "VeloixCracked" and g ~= gui then g:Destroy() end
+end
+
+-- KEY SCREEN
+local keyFrame = Instance.new("Frame")
+keyFrame.Name = "KeyFrame"
+keyFrame.Size = UDim2.new(0, 340, 0, 220)
+keyFrame.Position = UDim2.new(0.5, -170, 0.5, -110)
+keyFrame.BackgroundColor3 = Theme.bg
+keyFrame.Active = true
+keyFrame.Draggable = true
+keyFrame.Parent = gui
+keyFrame:SetAttribute("ThemeRole", "bg")
+corner(keyFrame, 12)
+stroke(keyFrame, Theme.stroke, 1.5):SetAttribute("ThemeRole", "stroke")
+
+local kTitle = Instance.new("TextLabel")
+kTitle.Size = UDim2.new(1, -20, 0, 36)
+kTitle.Position = UDim2.new(0, 10, 0, 12)
+kTitle.BackgroundTransparency = 1
+kTitle.Text = "VELOIX  ·  CRACKED"
+kTitle.Font = Enum.Font.GothamBold
+kTitle.TextSize = 20
+kTitle.TextColor3 = Theme.accent
+kTitle.Parent = keyFrame
+kTitle:SetAttribute("ThemeRole", "accent")
+
+local kSub = Instance.new("TextLabel")
+kSub.Size = UDim2.new(1, -20, 0, 20)
+kSub.Position = UDim2.new(0, 10, 0, 48)
+kSub.BackgroundTransparency = 1
+kSub.Text = "Enter key to unlock"
+kSub.Font = Enum.Font.Gotham
+kSub.TextSize = 13
+kSub.TextColor3 = Theme.muted
+kSub.Parent = keyFrame
+kSub:SetAttribute("ThemeRole", "muted")
+
+local keyBox = Instance.new("TextBox")
+keyBox.Size = UDim2.new(1, -40, 0, 36)
+keyBox.Position = UDim2.new(0, 20, 0, 80)
+keyBox.BackgroundColor3 = Theme.panel
+keyBox.PlaceholderText = "KEY"
+keyBox.Text = ""
+keyBox.Font = Enum.Font.Gotham
+keyBox.TextSize = 15
+keyBox.TextColor3 = Theme.text
+keyBox.ClearTextOnFocus = false
+keyBox.Parent = keyFrame
+keyBox:SetAttribute("ThemeRole", "panel")
+corner(keyBox, 8)
+
+local unlockBtn = Instance.new("TextButton")
+unlockBtn.Size = UDim2.new(1, -40, 0, 36)
+unlockBtn.Position = UDim2.new(0, 20, 0, 128)
+unlockBtn.BackgroundColor3 = Theme.accent
+unlockBtn.Text = "UNLOCK"
+unlockBtn.Font = Enum.Font.GothamBold
+unlockBtn.TextSize = 15
+unlockBtn.TextColor3 = Color3.new(1, 1, 1)
+unlockBtn.Parent = keyFrame
+corner(unlockBtn, 8)
+
+local discBtn = Instance.new("TextButton")
+discBtn.Size = UDim2.new(1, -40, 0, 28)
+discBtn.Position = UDim2.new(0, 20, 0, 172)
+discBtn.BackgroundColor3 = Theme.btn
+discBtn.Text = "Discord"
+discBtn.Font = Enum.Font.Gotham
+discBtn.TextSize = 13
+discBtn.TextColor3 = Theme.text
+discBtn.Parent = keyFrame
+discBtn:SetAttribute("ThemeRole", "btn")
+corner(discBtn, 6)
+discBtn.MouseButton1Click:Connect(function()
+    pcall(function()
+        if setclipboard then setclipboard(DISCORD) end
+    end)
+    notify("Veloix", "Discord link copied")
+end)
+
+-- MAIN WINDOW (hidden until key)
+local main = Instance.new("Frame")
+main.Name = "Main"
+main.Size = UDim2.new(0, 520, 0, 360)
+main.Position = UDim2.new(0.5, -260, 0.5, -180)
+main.BackgroundColor3 = Theme.bg
+main.Visible = false
+main.Active = true
+main.Draggable = true
+main.Parent = gui
+main:SetAttribute("ThemeRole", "bg")
+corner(main, 12)
+stroke(main, Theme.stroke, 1.5):SetAttribute("ThemeRole", "stroke")
+
+local top = Instance.new("Frame")
+top.Size = UDim2.new(1, 0, 0, 44)
+top.BackgroundColor3 = Theme.panel
+top.BorderSizePixel = 0
+top.Parent = main
+top:SetAttribute("ThemeRole", "panel")
+corner(top, 12)
+
+local mTitle = Instance.new("TextLabel")
+mTitle.Size = UDim2.new(0.6, 0, 1, 0)
+mTitle.Position = UDim2.new(0, 14, 0, 0)
+mTitle.BackgroundTransparency = 1
+mTitle.Text = "VELOIX HUB  ·  CRACKED"
+mTitle.Font = Enum.Font.GothamBold
+mTitle.TextSize = 16
+mTitle.TextColor3 = Theme.accent
+mTitle.TextXAlignment = Enum.TextXAlignment.Left
+mTitle.Parent = top
+mTitle:SetAttribute("ThemeRole", "accent")
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 36, 0, 28)
+closeBtn.Position = UDim2.new(1, -44, 0, 8)
+closeBtn.BackgroundColor3 = Theme.btn
+closeBtn.Text = "X"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 14
+closeBtn.TextColor3 = Theme.text
+closeBtn.Parent = top
+closeBtn:SetAttribute("ThemeRole", "btn")
+corner(closeBtn, 6)
+closeBtn.MouseButton1Click:Connect(function()
+    gui:Destroy()
+end)
+
+-- tabs
+local tabBar = Instance.new("Frame")
+tabBar.Size = UDim2.new(0, 120, 1, -52)
+tabBar.Position = UDim2.new(0, 8, 0, 48)
+tabBar.BackgroundColor3 = Theme.panel
+tabBar.Parent = main
+tabBar:SetAttribute("ThemeRole", "panel")
+corner(tabBar, 10)
+
+local tabList = Instance.new("UIListLayout")
+tabList.Padding = UDim.new(0, 6)
+tabList.Parent = tabBar
+local tabPad = Instance.new("UIPadding")
+tabPad.PaddingTop = UDim.new(0, 8)
+tabPad.PaddingLeft = UDim.new(0, 8)
+tabPad.PaddingRight = UDim.new(0, 8)
+tabPad.Parent = tabBar
+
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, -144, 1, -60)
+content.Position = UDim2.new(0, 136, 0, 52)
+content.BackgroundTransparency = 1
+content.Parent = main
+
+local pages = {}
+local currentTab
+
+local function makePage(name)
+    local sc = Instance.new("ScrollingFrame")
+    sc.Name = name
+    sc.Size = UDim2.new(1, 0, 1, 0)
+    sc.BackgroundTransparency = 1
+    sc.BorderSizePixel = 0
+    sc.ScrollBarThickness = 3
+    sc.Visible = false
+    sc.CanvasSize = UDim2.new(0, 0, 0, 0)
+    sc.Parent = content
+    local lay = Instance.new("UIListLayout")
+    lay.Padding = UDim.new(0, 6)
+    lay.Parent = sc
+    lay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        sc.CanvasSize = UDim2.new(0, 0, 0, lay.AbsoluteContentSize.Y + 16)
+    end)
+    pages[name] = sc
+    return sc
+end
+
+local function switchTab(name)
+    currentTab = name
+    for n, p in pairs(pages) do
+        p.Visible = (n == name)
+    end
+    for _, b in ipairs(tabBar:GetChildren()) do
+        if b:IsA("TextButton") then
+            local on = b.Name == "Tab_" .. name
+            b.BackgroundColor3 = on and Theme.accent or Theme.btn
+            b.TextColor3 = on and Color3.new(1, 1, 1) or Theme.text
+        end
+    end
+end
+
+local function addTab(name)
+    local b = Instance.new("TextButton")
+    b.Name = "Tab_" .. name
+    b.Size = UDim2.new(1, 0, 0, 32)
+    b.BackgroundColor3 = Theme.btn
+    b.Text = name
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 13
+    b.TextColor3 = Theme.text
+    b.Parent = tabBar
+    b:SetAttribute("ThemeRole", "btn")
+    corner(b, 6)
+    makePage(name)
+    b.MouseButton1Click:Connect(function()
+        switchTab(name)
+    end)
+    return pages[name]
+end
+
+local function addToggle(page, label, key)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, -8, 0, 34)
+    b.BackgroundColor3 = Theme.btn
+    b.Text = "  " .. label .. "  ·  OFF"
+    b.Font = Enum.Font.Gotham
+    b.TextSize = 13
+    b.TextColor3 = Theme.text
+    b.TextXAlignment = Enum.TextXAlignment.Left
+    b.Parent = page
+    b:SetAttribute("ThemeRole", "btn")
+    corner(b, 6)
+    b.MouseButton1Click:Connect(function()
+        S[key] = not S[key]
+        b:SetAttribute("On", S[key] or nil)
+        b.Text = "  " .. label .. (S[key] and "  ·  ON" or "  ·  OFF")
+        b.BackgroundColor3 = S[key] and Theme.btnOn or Theme.btn
+    end)
+    return b
+end
+
+local function addButton(page, label, fn)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, -8, 0, 34)
+    b.BackgroundColor3 = Theme.btn
+    b.Text = "  " .. label
+    b.Font = Enum.Font.Gotham
+    b.TextSize = 13
+    b.TextColor3 = Theme.text
+    b.TextXAlignment = Enum.TextXAlignment.Left
+    b.Parent = page
+    b:SetAttribute("ThemeRole", "btn")
+    corner(b, 6)
+    b.MouseButton1Click:Connect(function()
+        pcall(fn)
+        notify("Veloix", label)
+    end)
+    return b
+end
+
+local function addLabel(page, text)
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(1, -8, 0, 22)
+    l.BackgroundTransparency = 1
+    l.Text = text
+    l.Font = Enum.Font.GothamBold
+    l.TextSize = 12
+    l.TextColor3 = Theme.muted
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Parent = page
+    l:SetAttribute("ThemeRole", "muted")
+end
+
+-- TABS + CONTENT
+local combat = addTab("Combat")
+addLabel(combat, "AUTO FARM")
+addToggle(combat, "Auto Punch", "autoPunch")
+addToggle(combat, "Auto Rep", "autoRep")
+addToggle(combat, "Auto Rebirth", "autoRebirth")
+addButton(combat, "Punch Once", punch)
+addButton(combat, "Rep Once", rep)
+addButton(combat, "Rebirth Once", rebirth)
+addButton(combat, "Machine Interact", machineInteract)
+
+local player = addTab("Player")
+addLabel(player, "MOVEMENT")
+addToggle(player, "Noclip", "noclip")
+addToggle(player, "Fly (WASD + Space)", "fly")
+addToggle(player, "Infinite Jump", "infiniteJump")
+addButton(player, "Speed +16", function() S.speed = math.clamp(S.speed + 16, 16, 500) end)
+addButton(player, "Speed -16", function() S.speed = math.clamp(S.speed - 16, 16, 500) end)
+addButton(player, "Jump +20", function() S.jump = math.clamp(S.jump + 20, 50, 500) end)
+addButton(player, "Jump -20", function() S.jump = math.clamp(S.jump - 20, 50, 500) end)
+addButton(player, "FlySpeed +20", function() S.flySpeed = math.clamp(S.flySpeed + 20, 20, 400) end)
+addButton(player, "FlySpeed -20", function() S.flySpeed = math.clamp(S.flySpeed - 20, 20, 400) end)
+addButton(player, "Reset Speed/Jump", function() S.speed = 16 S.jump = 50 end)
+
+local pets = addTab("Pets")
+addLabel(pets, "PETS & POWERUPS")
+addButton(pets, "Equip Pet", equipPet)
+addButton(pets, "Sell Pets", sellPets)
+addButton(pets, "Evolve Pet", evolvePet)
+addButton(pets, "Pet Craft", petCraft)
+addButton(pets, "Pet Enchant", petEnchant)
+addButton(pets, "Sell PowerUps", sellPowerUps)
+addButton(pets, "Evolve PowerUp", evolvePowerUp)
+
+local rewards = addTab("Rewards")
+addLabel(rewards, "CLAIMS & CODES")
+addButton(rewards, "Daily Reward", claimDaily)
+addButton(rewards, "Free Gift", claimFreeGift)
+addButton(rewards, "Open Crystal", openCrystal)
+addButton(rewards, "Fortune Wheel", openWheel)
+addButton(rewards, "Ultimates", ultimates)
+addButton(rewards, "Group Reward", groupReward)
+
+local codeBox = Instance.new("TextBox")
+codeBox.Size = UDim2.new(1, -8, 0, 34)
+codeBox.BackgroundColor3 = Theme.panel
+codeBox.PlaceholderText = "Enter code..."
+codeBox.Text = ""
+codeBox.Font = Enum.Font.Gotham
+codeBox.TextSize = 13
+codeBox.TextColor3 = Theme.text
+codeBox.ClearTextOnFocus = false
+codeBox.Parent = rewards
+codeBox:SetAttribute("ThemeRole", "panel")
+corner(codeBox, 6)
+addButton(rewards, "Redeem Code", function() useCode(codeBox.Text) end)
+
+local travel = addTab("Travel")
+addLabel(travel, "AREA TRAVEL")
+for _, a in ipairs({"Spawn", "Desert", "Frost", "Space", "Mythical", "Jungle", "Beach", "Volcano"}) do
+    addButton(travel, "Go: " .. a, function() areaTravel(a) end)
+end
+
+local settings = addTab("Settings")
+addLabel(settings, "THEME")
+for name, _ in pairs(Themes) do
+    addButton(settings, "Theme: " .. name, function()
+        ThemeName = name
+        Theme = Themes[name]
+        applyTheme()
+        notify("Veloix", "Theme → " .. name)
+    end)
+end
+addLabel(settings, "LINKS")
+addButton(settings, "Copy Discord Invite", function()
+    if setclipboard then setclipboard(DISCORD) end
+end)
+addButton(settings, "Destroy Hub", function() gui:Destroy() end)
+
+switchTab("Combat")
+
+-- KEY LOGIC
+unlockBtn.MouseButton1Click:Connect(function()
+    local k = (keyBox.Text or ""):gsub("%s+", "")
+    if VALID_KEYS[k] then
+        keyFrame.Visible = false
+        main.Visible = true
+        notify("Veloix", "Unlocked — welcome")
+    else
+        notify("Veloix", "Invalid key")
+        keyBox.Text = ""
+    end
+end)
+
+keyBox.FocusLost:Connect(function(enter)
+    if enter then unlockBtn.MouseButton1Click:Fire() end
+end)
+
+warn("[VELOIX CRACKED] loaded on Delta | key = VSP")
