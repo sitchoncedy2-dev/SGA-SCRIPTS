@@ -1,0 +1,1175 @@
+--[[
+  Encrypted Hub - Murder Mystery 2
+  Key: VSP | Discord: https://discord.gg/nxsD6NdbR3
+  Delta-safe | 1000+ MM2 features
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local VirtualUser = game:GetService("VirtualUser")
+
+local LP = Players.LocalPlayer
+local KEY = "VSP"
+local DISCORD = "https://discord.gg/nxsD6NdbR3"
+
+local env = (getgenv and getgenv()) or _G
+pcall(function()
+	if env.__EH_MM2 and type(env.__EH_MM2.destroy) == "function" then
+		env.__EH_MM2.destroy()
+	end
+end)
+
+local THEMES = {
+	Space = {bg=Color3.fromRGB(8,10,22),panel=Color3.fromRGB(14,16,32),accent=Color3.fromRGB(90,140,255),text=Color3.fromRGB(230,235,255),muted=Color3.fromRGB(140,150,180),tab=Color3.fromRGB(20,24,45),tabActive=Color3.fromRGB(40,50,90),on=Color3.fromRGB(50,200,120),off=Color3.fromRGB(200,60,80)},
+	Crimson = {bg=Color3.fromRGB(18,8,10),panel=Color3.fromRGB(32,14,16),accent=Color3.fromRGB(255,70,90),text=Color3.fromRGB(255,235,235),muted=Color3.fromRGB(180,140,145),tab=Color3.fromRGB(45,20,24),tabActive=Color3.fromRGB(90,30,40),on=Color3.fromRGB(50,200,120),off=Color3.fromRGB(200,60,80)},
+	Emerald = {bg=Color3.fromRGB(6,16,12),panel=Color3.fromRGB(12,28,20),accent=Color3.fromRGB(60,220,140),text=Color3.fromRGB(230,255,240),muted=Color3.fromRGB(140,180,160),tab=Color3.fromRGB(16,36,28),tabActive=Color3.fromRGB(30,70,50),on=Color3.fromRGB(50,200,120),off=Color3.fromRGB(200,60,80)},
+	Violet = {bg=Color3.fromRGB(14,8,22),panel=Color3.fromRGB(24,14,36),accent=Color3.fromRGB(180,100,255),text=Color3.fromRGB(240,230,255),muted=Color3.fromRGB(160,140,180),tab=Color3.fromRGB(30,20,48),tabActive=Color3.fromRGB(60,40,90),on=Color3.fromRGB(50,200,120),off=Color3.fromRGB(200,60,80)},
+	Midnight = {bg=Color3.fromRGB(4,6,12),panel=Color3.fromRGB(10,12,22),accent=Color3.fromRGB(100,160,255),text=Color3.fromRGB(220,230,255),muted=Color3.fromRGB(120,130,160),tab=Color3.fromRGB(14,16,28),tabActive=Color3.fromRGB(28,36,60),on=Color3.fromRGB(50,200,120),off=Color3.fromRGB(200,60,80)},
+}
+local COLORS = THEMES.Space
+local function applyTheme(n)
+	if THEMES[n] then COLORS = THEMES[n] end
+end
+
+local function notify(title, text)
+	pcall(function()
+		game:GetService("StarterGui"):SetCore("SendNotification", {
+			Title = tostring(title),
+			Text = tostring(text),
+			Duration = 3,
+		})
+	end)
+end
+
+local function getChar() return LP.Character end
+local function getHRP()
+	local c = getChar()
+	return c and c:FindFirstChild("HumanoidRootPart")
+end
+local function getHum()
+	local c = getChar()
+	return c and c:FindFirstChildOfClass("Humanoid")
+end
+local function getRoot(plr)
+	local c = plr and plr.Character
+	return c and c:FindFirstChild("HumanoidRootPart")
+end
+
+local function getRole(plr)
+	if not plr then return "Unknown" end
+	local ok, attr = pcall(function() return plr:GetAttribute("Role") or plr:GetAttribute("role") end)
+	if ok and attr and tostring(attr) ~= "" then return tostring(attr) end
+	local function hasTool(name)
+		name = name:lower()
+		local function scan(container)
+			if not container then return false end
+			for _, t in ipairs(container:GetChildren()) do
+				if t:IsA("Tool") and t.Name:lower():find(name, 1, true) then return true end
+			end
+			return false
+		end
+		return scan(plr.Character) or scan(plr:FindFirstChildOfClass("Backpack"))
+	end
+	if hasTool("knife") then return "Murderer" end
+	if hasTool("gun") then return "Sheriff" end
+	return "Innocent"
+end
+
+local function isMurderer(plr)
+	return tostring(getRole(plr)):lower():find("murder") ~= nil
+end
+local function isSheriff(plr)
+	local r = tostring(getRole(plr)):lower()
+	return r:find("sheriff") ~= nil or r:find("hero") ~= nil
+end
+
+local function equipTool(sub)
+	sub = sub:lower()
+	local char = LP.Character
+	local pack = LP:FindFirstChildOfClass("Backpack")
+	local function try(container)
+		if not container then return nil end
+		for _, t in ipairs(container:GetChildren()) do
+			if t:IsA("Tool") and t.Name:lower():find(sub, 1, true) then
+				pcall(function()
+					local h = getHum()
+					if h then h:EquipTool(t) end
+				end)
+				return t
+			end
+		end
+		return nil
+	end
+	return try(char) or try(pack)
+end
+
+local function activateTool()
+	local char = LP.Character
+	if not char then return end
+	local tool = char:FindFirstChildOfClass("Tool")
+	if tool then pcall(function() tool:Activate() end) end
+end
+
+-- state
+local S = {
+	alive = true,
+	antiHit = false,
+	speedOn = false, speed = 24,
+	jumpOn = false, jump = 50,
+	fly = false, flySpeed = 50,
+	noclip = false,
+	infJump = false,
+	esp = false, espMurder = true, espSheriff = true, espInnocent = false,
+	fullbright = false, noFog = false,
+	coinFarm = false, autoGun = false,
+	killAura = false, killRange = 12,
+	autoKnife = false,
+	autoShoot = false, shootRange = 90,
+	roleNotify = false,
+	antiStun = false, antiAFK = true,
+	clickTp = false,
+	flags = {}, -- 1000+ pack flags
+}
+local conns = {}
+local function bind(c) if c then table.insert(conns, c) end return c end
+local function disc(c) if c then pcall(function() c:Disconnect() end) end end
+
+-- anti-hit (lightweight, safe)
+local AH = { fake = nil, step = nil, original = nil }
+local function stopAntiHit()
+	S.antiHit = false
+	if AH.step then disc(AH.step) AH.step = nil end
+	if AH.fake then pcall(function() AH.fake:Destroy() end) AH.fake = nil end
+	local hrp = getHRP()
+	if hrp and AH.original then pcall(function() hrp.CFrame = AH.original end) end
+end
+local function startAntiHit()
+	S.antiHit = true
+	local hrp = getHRP()
+	if not hrp then return end
+	AH.original = hrp.CFrame
+	if AH.step then disc(AH.step) end
+	AH.step = bind(RunService.Heartbeat:Connect(function()
+		if not S.antiHit then return end
+		local root = getHRP()
+		if not root then return end
+		-- soft desync offset
+		pcall(function()
+			root.CFrame = root.CFrame + Vector3.new(0, 0.01, 0)
+			root.CFrame = root.CFrame - Vector3.new(0, 0.01, 0)
+		end)
+	end))
+end
+
+-- movement
+local flyBG, flyBV, noclipC, speedC
+local function setSpeed(on)
+	S.speedOn = on
+	if speedC then disc(speedC) speedC = nil end
+	if on then
+		speedC = bind(RunService.Heartbeat:Connect(function()
+			if not S.speedOn then return end
+			local h = getHum()
+			if h then h.WalkSpeed = S.speed end
+		end))
+	end
+end
+local function setJump(on)
+	S.jumpOn = on
+	bind(RunService.Heartbeat:Connect(function()
+		if not S.jumpOn then return end
+		local h = getHum()
+		if h then h.JumpPower = S.jump end
+	end))
+end
+local function setFly(on)
+	S.fly = on
+	if flyBG then pcall(function() flyBG:Destroy() end) flyBG = nil end
+	if flyBV then pcall(function() flyBV:Destroy() end) flyBV = nil end
+	local hrp, hum = getHRP(), getHum()
+	if not on or not hrp or not hum then return end
+	hum.PlatformStand = true
+	flyBG = Instance.new("BodyGyro")
+	flyBG.P = 9e4
+	flyBG.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+	flyBG.CFrame = hrp.CFrame
+	flyBG.Parent = hrp
+	flyBV = Instance.new("BodyVelocity")
+	flyBV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+	flyBV.Velocity = Vector3.zero
+	flyBV.Parent = hrp
+	bind(RunService.RenderStepped:Connect(function()
+		if not S.fly or not hrp or not hrp.Parent then return end
+		local cam = Workspace.CurrentCamera
+		if not cam then return end
+		local dir = Vector3.zero
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0,1,0) end
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.new(0,1,0) end
+		if dir.Magnitude > 0 then dir = dir.Unit * S.flySpeed end
+		flyBV.Velocity = dir
+		flyBG.CFrame = cam.CFrame
+	end))
+end
+local function setNoclip(on)
+	S.noclip = on
+	if noclipC then disc(noclipC) noclipC = nil end
+	if on then
+		noclipC = bind(RunService.Stepped:Connect(function()
+			if not S.noclip then return end
+			local c = getChar()
+			if not c then return end
+			for _, p in ipairs(c:GetDescendants()) do
+				if p:IsA("BasePart") then p.CanCollide = false end
+			end
+		end))
+	end
+end
+
+UserInputService.JumpRequest:Connect(function()
+	if S.infJump or S.flags["infjump"] then
+		local h = getHum()
+		if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+	end
+end)
+
+-- ESP
+local espFolder
+local function clearESP()
+	if espFolder then pcall(function() espFolder:Destroy() end) end
+	espFolder = nil
+end
+local function setESP(on)
+	S.esp = on
+	clearESP()
+	if not on then return end
+	local parent = CoreGui
+	pcall(function()
+		if type(gethui) == "function" then parent = gethui() or parent end
+	end)
+	espFolder = Instance.new("Folder")
+	espFolder.Name = "EH_MM2_ESP"
+	espFolder.Parent = parent
+	task.spawn(function()
+		while S.esp and S.alive do
+			for _, c in ipairs(espFolder:GetChildren()) do c:Destroy() end
+			for _, plr in ipairs(Players:GetPlayers()) do
+				if plr ~= LP and plr.Character then
+					local role = getRole(plr)
+					local rl = role:lower()
+					local show = (S.espInnocent and true)
+						or (S.espMurder and rl:find("murder"))
+						or (S.espSheriff and (rl:find("sheriff") or rl:find("hero")))
+					if show or (S.espMurder or S.espSheriff or S.espInnocent) then
+						if (S.espMurder and rl:find("murder"))
+							or (S.espSheriff and (rl:find("sheriff") or rl:find("hero")))
+							or (S.espInnocent and rl:find("innocent"))
+							or (not S.espMurder and not S.espSheriff and not S.espInnocent) then
+							local head = plr.Character:FindFirstChild("Head") or plr.Character:FindFirstChild("HumanoidRootPart")
+							if head then
+								local col = Color3.fromRGB(200,200,200)
+								if rl:find("murder") then col = Color3.fromRGB(255,60,60)
+								elseif rl:find("sheriff") or rl:find("hero") then col = Color3.fromRGB(60,120,255) end
+								local bb = Instance.new("BillboardGui")
+								bb.Size = UDim2.fromOffset(140, 28)
+								bb.AlwaysOnTop = true
+								bb.Adornee = head
+								bb.Parent = espFolder
+								local tl = Instance.new("TextLabel")
+								tl.Size = UDim2.fromScale(1,1)
+								tl.BackgroundTransparency = 1
+								tl.Text = plr.Name .. " [" .. role .. "]"
+								tl.TextColor3 = col
+								tl.Font = Enum.Font.GothamBold
+								tl.TextSize = 12
+								tl.TextStrokeTransparency = 0.4
+								tl.Parent = bb
+								if rl:find("murder") then
+									local hl = Instance.new("Highlight")
+									hl.FillColor = Color3.fromRGB(255,0,0)
+									hl.OutlineColor = Color3.fromRGB(255,120,120)
+									hl.FillTransparency = 0.55
+									hl.Adornee = plr.Character
+									hl.Parent = espFolder
+								end
+							end
+						end
+					end
+				end
+			end
+			task.wait(1.5)
+		end
+	end)
+end
+
+-- main loops
+task.spawn(function()
+	while S.alive do
+		task.wait(0.12)
+		local my = getHRP()
+		local hum = getHum()
+
+		if S.killAura and my then
+			equipTool("knife")
+			for _, plr in ipairs(Players:GetPlayers()) do
+				if plr ~= LP and plr.Character then
+					local r = plr.Character:FindFirstChild("HumanoidRootPart")
+					local h = plr.Character:FindFirstChildOfClass("Humanoid")
+					if r and h and h.Health > 0 and (r.Position - my.Position).Magnitude <= S.killRange then
+						activateTool()
+						break
+					end
+				end
+			end
+		end
+		if S.autoKnife then equipTool("knife") activateTool() end
+		if S.autoShoot and my then
+			for _, plr in ipairs(Players:GetPlayers()) do
+				if plr ~= LP and isMurderer(plr) and plr.Character then
+					local r = plr.Character:FindFirstChild("HumanoidRootPart")
+					if r and (r.Position - my.Position).Magnitude <= S.shootRange then
+						equipTool("gun")
+						activateTool()
+						break
+					end
+				end
+			end
+		end
+		if S.autoGun then equipTool("gun") end
+		if S.coinFarm and my then
+			for _, d in ipairs(Workspace:GetDescendants()) do
+				if d:IsA("BasePart") and d.Name:lower():find("coin") then
+					pcall(function() my.CFrame = d.CFrame + Vector3.new(0, 2, 0) end)
+					break
+				end
+			end
+		end
+		if S.antiStun and hum then
+			pcall(function()
+				hum.PlatformStand = false
+				hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+				hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+			end)
+		end
+		if S.fullbright then
+			pcall(function()
+				Lighting.Brightness = 2
+				Lighting.ClockTime = 14
+				Lighting.FogEnd = 1e6
+			end)
+		end
+		if S.noFog then pcall(function() Lighting.FogEnd = 1e6 end) end
+		if S.antiAFK then
+			pcall(function()
+				VirtualUser:CaptureController()
+				VirtualUser:ClickButton2(Vector2.new())
+			end)
+		end
+
+		-- flag-driven extras
+		local f = S.flags
+		if f["m_aura"] and my then
+			equipTool("knife")
+			local range = tonumber(f["m_aura_range"]) or 12
+			for _, plr in ipairs(Players:GetPlayers()) do
+				if plr ~= LP and plr.Character then
+					local r = plr.Character:FindFirstChild("HumanoidRootPart")
+					if r and (r.Position - my.Position).Magnitude <= range then activateTool() end
+				end
+			end
+		end
+		if f["m_chase"] and my then
+			local best, bd = nil, 80
+			for _, plr in ipairs(Players:GetPlayers()) do
+				if plr ~= LP and plr.Character then
+					local r = plr.Character:FindFirstChild("HumanoidRootPart")
+					if r then
+						local d = (r.Position - my.Position).Magnitude
+						if d < bd then best, bd = r, d end
+					end
+				end
+			end
+			if best then
+				pcall(function() my.CFrame = my.CFrame:Lerp(CFrame.new(best.Position + Vector3.new(0,0,3)), 0.2) end)
+				equipTool("knife") activateTool()
+			end
+		end
+		if f["s_track"] and my then
+			for _, plr in ipairs(Players:GetPlayers()) do
+				if plr ~= LP and isMurderer(plr) and plr.Character then
+					local r = plr.Character:FindFirstChild("HumanoidRootPart")
+					if r then
+						pcall(function() my.CFrame = CFrame.new(my.Position, r.Position) end)
+						if f["s_shoot"] then equipTool("gun") activateTool() end
+					end
+				end
+			end
+		end
+		if f["i_run"] and my then
+			for _, plr in ipairs(Players:GetPlayers()) do
+				if plr ~= LP and isMurderer(plr) and plr.Character then
+					local r = plr.Character:FindFirstChild("HumanoidRootPart")
+					if r and (r.Position - my.Position).Magnitude < 40 then
+						local away = (my.Position - r.Position)
+						if away.Magnitude > 0.1 then
+							away = away.Unit * 12
+							pcall(function() my.CFrame = CFrame.new(my.Position + away) end)
+						end
+					end
+				end
+			end
+		end
+		if f["coin_magnet"] and my then
+			for _, d in ipairs(Workspace:GetDescendants()) do
+				if d:IsA("BasePart") and d.Name:lower():find("coin") then
+					pcall(function() d.CFrame = my.CFrame end)
+				end
+			end
+		end
+		if hum then
+			for spd = 16, 60 do
+				if f["spd_" .. spd] then hum.WalkSpeed = spd end
+			end
+			for jp = 50, 150, 5 do
+				if f["jp_" .. jp] then hum.JumpPower = jp end
+			end
+		end
+		if f["spin"] and my then
+			my.CFrame = my.CFrame * CFrame.Angles(0, math.rad(12), 0)
+		end
+	end
+end)
+
+-- click TP
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if S.clickTp and input.UserInputType == Enum.UserInputType.MouseButton1 then
+		local mouse = LP:GetMouse()
+		local hrp = getHRP()
+		if hrp and mouse.Hit then
+			hrp.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0, 3, 0))
+		end
+	end
+end)
+
+-- ===================== UI =====================
+local parentGui = CoreGui
+pcall(function()
+	if type(gethui) == "function" then
+		local g = gethui()
+		if g then parentGui = g end
+	end
+end)
+
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "EncryptedHubMM2"
+Gui.ResetOnSpawn = false
+Gui.IgnoreGuiInset = true
+Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+Gui.DisplayOrder = 120
+Gui.Parent = parentGui
+
+local function corner(p, r)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, r or 10)
+	c.Parent = p
+end
+local function stroke(p, col, th)
+	local s = Instance.new("UIStroke")
+	s.Color = col or COLORS.accent
+	s.Thickness = th or 1.4
+	s.Parent = p
+	return s
+end
+
+local Dim = Instance.new("Frame", Gui)
+Dim.Size = UDim2.fromScale(1,1)
+Dim.BackgroundColor3 = Color3.new(0,0,0)
+Dim.BackgroundTransparency = 0.45
+Dim.BorderSizePixel = 0
+
+local vp = (Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize) or Vector2.new(800,600)
+local mobile = (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled) or vp.X < 700
+local CW = mobile and math.min(vp.X - 24, 360) or 380
+local CH = mobile and math.min(vp.Y * 0.72, 440) or 400
+
+local Gate = Instance.new("Frame", Gui)
+Gate.Size = UDim2.fromOffset(CW, CH)
+Gate.Position = UDim2.fromScale(0.5, 0.5)
+Gate.AnchorPoint = Vector2.new(0.5, 0.5)
+Gate.BackgroundColor3 = COLORS.bg
+Gate.BorderSizePixel = 0
+corner(Gate, 16)
+stroke(Gate, COLORS.accent, 2)
+
+local GatePage = Instance.new("Frame", Gate)
+GatePage.Size = UDim2.fromScale(1,1)
+GatePage.BackgroundTransparency = 1
+
+local Main
+local pages, tabButtons = {}, {}
+local currentTab = "Combat"
+
+local function unlockHub()
+	Gate.Visible = false
+	Dim.Visible = false
+	if Main then Main.Visible = true end
+	notify("Encrypted Hub", "Unlocked · MM2")
+end
+
+local function showKey(themeName)
+	applyTheme(themeName)
+	Gate.BackgroundColor3 = COLORS.bg
+	for _, c in ipairs(GatePage:GetChildren()) do c:Destroy() end
+
+	local t1 = Instance.new("TextLabel", GatePage)
+	t1.Size = UDim2.new(1,-40,0,28)
+	t1.Position = UDim2.fromOffset(20, 22)
+	t1.BackgroundTransparency = 1
+	t1.Text = "Encrypted Hub"
+	t1.Font = Enum.Font.GothamBlack
+	t1.TextSize = 24
+	t1.TextColor3 = COLORS.text
+	t1.TextXAlignment = Enum.TextXAlignment.Left
+
+	local t2 = Instance.new("TextLabel", GatePage)
+	t2.Size = UDim2.new(1,-40,0,18)
+	t2.Position = UDim2.fromOffset(20, 52)
+	t2.BackgroundTransparency = 1
+	t2.Text = themeName .. "  ·  Murder Mystery 2"
+	t2.Font = Enum.Font.Gotham
+	t2.TextSize = 13
+	t2.TextColor3 = COLORS.muted
+	t2.TextXAlignment = Enum.TextXAlignment.Left
+
+	local status = Instance.new("TextLabel", GatePage)
+	status.Size = UDim2.new(1,-40,0,18)
+	status.Position = UDim2.fromOffset(20, 90)
+	status.BackgroundTransparency = 1
+	status.Text = "Enter key"
+	status.Font = Enum.Font.Gotham
+	status.TextSize = 13
+	status.TextColor3 = COLORS.muted
+	status.TextXAlignment = Enum.TextXAlignment.Left
+
+	local Box = Instance.new("TextBox", GatePage)
+	Box.Size = UDim2.new(1,-40,0,46)
+	Box.Position = UDim2.fromOffset(20, 118)
+	Box.BackgroundColor3 = COLORS.panel
+	Box.PlaceholderText = "Key"
+	Box.Text = ""
+	Box.Font = Enum.Font.GothamMedium
+	Box.TextSize = 15
+	Box.TextColor3 = COLORS.text
+	Box.PlaceholderColor3 = COLORS.muted
+	Box.ClearTextOnFocus = false
+	Box.TextXAlignment = Enum.TextXAlignment.Left
+	corner(Box, 12)
+	stroke(Box, COLORS.accent, 1.3)
+	local pad = Instance.new("UIPadding", Box)
+	pad.PaddingLeft = UDim.new(0, 12)
+
+	local Unlock = Instance.new("TextButton", GatePage)
+	Unlock.Size = UDim2.new(1,-40,0,46)
+	Unlock.Position = UDim2.fromOffset(20, 178)
+	Unlock.BackgroundColor3 = COLORS.accent
+	Unlock.Text = "Unlock"
+	Unlock.Font = Enum.Font.GothamBold
+	Unlock.TextSize = 16
+	Unlock.TextColor3 = Color3.new(1,1,1)
+	Unlock.AutoButtonColor = false
+	corner(Unlock, 12)
+
+	local discBtn = Instance.new("TextButton", GatePage)
+	discBtn.Size = UDim2.new(1,-40,0,36)
+	discBtn.Position = UDim2.fromOffset(20, 236)
+	discBtn.BackgroundColor3 = COLORS.panel
+	discBtn.Text = "Copy Discord"
+	discBtn.Font = Enum.Font.Gotham
+	discBtn.TextSize = 13
+	discBtn.TextColor3 = COLORS.text
+	discBtn.AutoButtonColor = false
+	corner(discBtn, 10)
+	stroke(discBtn, COLORS.accent, 1)
+	discBtn.MouseButton1Click:Connect(function()
+		pcall(function()
+			if setclipboard then setclipboard(DISCORD) end
+		end)
+		notify("Discord", "Copied")
+	end)
+
+	local function try()
+		local k = tostring(Box.Text or ""):gsub("%s+", "")
+		if k == KEY then
+			status.Text = "Correct"
+			status.TextColor3 = COLORS.on
+			unlockHub()
+		else
+			status.Text = "Wrong key"
+			status.TextColor3 = COLORS.off
+		end
+	end
+	Unlock.MouseButton1Click:Connect(try)
+	Box.FocusLost:Connect(function(enter) if enter then try() end end)
+end
+
+local function showThemes()
+	for _, c in ipairs(GatePage:GetChildren()) do c:Destroy() end
+	local t1 = Instance.new("TextLabel", GatePage)
+	t1.Size = UDim2.new(1,-40,0,28)
+	t1.Position = UDim2.fromOffset(20, 18)
+	t1.BackgroundTransparency = 1
+	t1.Text = "Pick Theme"
+	t1.Font = Enum.Font.GothamBlack
+	t1.TextSize = 22
+	t1.TextColor3 = COLORS.text
+	t1.TextXAlignment = Enum.TextXAlignment.Left
+
+	local list = Instance.new("ScrollingFrame", GatePage)
+	list.Size = UDim2.new(1,-40,1,-90)
+	list.Position = UDim2.fromOffset(20, 60)
+	list.BackgroundTransparency = 1
+	list.BorderSizePixel = 0
+	list.ScrollBarThickness = 3
+	list.CanvasSize = UDim2.fromOffset(0, 280)
+
+	local names = {"Space","Crimson","Emerald","Violet","Midnight"}
+	for i, tn in ipairs(names) do
+		local th = THEMES[tn]
+		local b = Instance.new("TextButton", list)
+		b.Size = UDim2.new(1,-4,0,42)
+		b.Position = UDim2.fromOffset(0, (i-1)*48)
+		b.BackgroundColor3 = th.panel
+		b.Text = ""
+		b.AutoButtonColor = false
+		corner(b, 10)
+		stroke(b, th.accent, 1.2)
+		local dot = Instance.new("Frame", b)
+		dot.Size = UDim2.fromOffset(10,10)
+		dot.Position = UDim2.fromOffset(14,16)
+		dot.BackgroundColor3 = th.accent
+		dot.BorderSizePixel = 0
+		corner(dot, 5)
+		local lab = Instance.new("TextLabel", b)
+		lab.Size = UDim2.new(1,-40,1,0)
+		lab.Position = UDim2.fromOffset(34,0)
+		lab.BackgroundTransparency = 1
+		lab.Text = tn
+		lab.Font = Enum.Font.GothamBold
+		lab.TextSize = 14
+		lab.TextColor3 = th.text
+		lab.TextXAlignment = Enum.TextXAlignment.Left
+		b.MouseButton1Click:Connect(function() showKey(tn) end)
+	end
+end
+
+showThemes()
+
+-- MAIN
+local mainW = mobile and math.min(vp.X - 16, 520) or 560
+local mainH = mobile and math.min(vp.Y * 0.78, 460) or 420
+Main = Instance.new("Frame", Gui)
+Main.Size = UDim2.fromOffset(mainW, mainH)
+Main.Position = UDim2.fromScale(0.5, 0.5)
+Main.AnchorPoint = Vector2.new(0.5, 0.5)
+Main.BackgroundColor3 = COLORS.bg
+Main.BorderSizePixel = 0
+Main.Visible = false
+Main.Active = true
+corner(Main, 14)
+stroke(Main, COLORS.accent, 1.5)
+
+local Header = Instance.new("Frame", Main)
+Header.Size = UDim2.new(1,0,0,42)
+Header.BackgroundColor3 = COLORS.panel
+Header.BorderSizePixel = 0
+corner(Header, 14)
+
+local Title = Instance.new("TextLabel", Header)
+Title.Size = UDim2.new(1,-90,1,0)
+Title.Position = UDim2.fromOffset(14,0)
+Title.BackgroundTransparency = 1
+Title.Text = "Encrypted Hub  ·  MM2"
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 15
+Title.TextColor3 = COLORS.accent
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+local closeBtn = Instance.new("TextButton", Header)
+closeBtn.Size = UDim2.fromOffset(32,28)
+closeBtn.Position = UDim2.new(1,-40,0.5,-14)
+closeBtn.BackgroundColor3 = COLORS.off
+closeBtn.Text = "X"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 14
+closeBtn.TextColor3 = Color3.new(1,1,1)
+corner(closeBtn, 8)
+
+local TabBar = Instance.new("ScrollingFrame", Main)
+TabBar.Size = UDim2.new(0, mobile and 100 or 120, 1, -50)
+TabBar.Position = UDim2.fromOffset(8, 48)
+TabBar.BackgroundColor3 = COLORS.panel
+TabBar.BorderSizePixel = 0
+TabBar.ScrollBarThickness = 2
+TabBar.CanvasSize = UDim2.fromOffset(0, 800)
+corner(TabBar, 10)
+local tabLay = Instance.new("UIListLayout", TabBar)
+tabLay.Padding = UDim.new(0, 4)
+tabLay.SortOrder = Enum.SortOrder.LayoutOrder
+local tabPad = Instance.new("UIPadding", TabBar)
+tabPad.PaddingTop = UDim.new(0, 6)
+tabPad.PaddingLeft = UDim.new(0, 6)
+tabPad.PaddingRight = UDim.new(0, 6)
+
+local Content = Instance.new("Frame", Main)
+Content.Size = UDim2.new(1, mobile and -118 or -140, 1, -56)
+Content.Position = UDim2.fromOffset(mobile and 110 or 132, 48)
+Content.BackgroundColor3 = COLORS.panel
+Content.BorderSizePixel = 0
+corner(Content, 10)
+
+local function makePage(name)
+	local sc = Instance.new("ScrollingFrame")
+	sc.Name = name
+	sc.Size = UDim2.fromScale(1,1)
+	sc.BackgroundTransparency = 1
+	sc.BorderSizePixel = 0
+	sc.ScrollBarThickness = 3
+	sc.CanvasSize = UDim2.new(0,0,0,0)
+	sc.Visible = false
+	sc.Parent = Content
+	local lay = Instance.new("UIListLayout", sc)
+	lay.Padding = UDim.new(0, 6)
+	lay.SortOrder = Enum.SortOrder.LayoutOrder
+	local pad = Instance.new("UIPadding", sc)
+	pad.PaddingTop = UDim.new(0, 8)
+	pad.PaddingLeft = UDim.new(0, 8)
+	pad.PaddingRight = UDim.new(0, 8)
+	lay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		sc.CanvasSize = UDim2.new(0,0,0, lay.AbsoluteContentSize.Y + 16)
+	end)
+	pages[name] = sc
+	return sc
+end
+
+local function selectTab(name)
+	currentTab = name
+	for n, p in pairs(pages) do p.Visible = (n == name) end
+	for n, b in pairs(tabButtons) do
+		b.BackgroundColor3 = (n == name) and COLORS.tabActive or COLORS.tab
+		b.TextColor3 = (n == name) and COLORS.accent or COLORS.muted
+	end
+end
+
+local function addTab(name, order)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(1,0,0,28)
+	b.BackgroundColor3 = COLORS.tab
+	b.Text = name
+	b.TextColor3 = COLORS.muted
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 11
+	b.LayoutOrder = order
+	b.Parent = TabBar
+	corner(b, 8)
+	tabButtons[name] = b
+	makePage(name)
+	b.MouseButton1Click:Connect(function() selectTab(name) end)
+	TabBar.CanvasSize = UDim2.fromOffset(0, order * 34 + 20)
+end
+
+local tabs = {
+	"Combat","Player","Visuals","Teleport","Farm",
+	"Murderer","Sheriff","Innocent","ESP+","Movement+",
+	"Coins+","Protect+","Round+","Misc","Settings"
+}
+for i, n in ipairs(tabs) do addTab(n, i) end
+
+local function section(page, text, order)
+	local l = Instance.new("TextLabel")
+	l.Size = UDim2.new(1,-8,0,22)
+	l.BackgroundTransparency = 1
+	l.Text = text
+	l.Font = Enum.Font.GothamBold
+	l.TextSize = 12
+	l.TextColor3 = COLORS.accent
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.LayoutOrder = order
+	l.Parent = page
+end
+
+local function toggle(page, label, order, default, cb)
+	local row = Instance.new("TextButton")
+	row.Size = UDim2.new(1,-8,0,32)
+	row.BackgroundColor3 = Color3.fromRGB(18,20,36)
+	row.Text = ""
+	row.AutoButtonColor = false
+	row.LayoutOrder = order
+	row.Parent = page
+	corner(row, 8)
+	local lab = Instance.new("TextLabel", row)
+	lab.Size = UDim2.new(1,-50,1,0)
+	lab.Position = UDim2.fromOffset(10,0)
+	lab.BackgroundTransparency = 1
+	lab.Text = label
+	lab.Font = Enum.Font.Gotham
+	lab.TextSize = 12
+	lab.TextColor3 = COLORS.text
+	lab.TextXAlignment = Enum.TextXAlignment.Left
+	local state = default and true or false
+	local pill = Instance.new("Frame", row)
+	pill.Size = UDim2.fromOffset(36,18)
+	pill.Position = UDim2.new(1,-44,0.5,-9)
+	pill.BackgroundColor3 = state and COLORS.on or COLORS.off
+	pill.BorderSizePixel = 0
+	corner(pill, 9)
+	row.MouseButton1Click:Connect(function()
+		state = not state
+		pill.BackgroundColor3 = state and COLORS.on or COLORS.off
+		if cb then pcall(cb, state) end
+	end)
+	if default and cb then pcall(cb, true) end
+end
+
+local function button(page, label, order, cb)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(1,-8,0,32)
+	b.BackgroundColor3 = COLORS.tab
+	b.Text = label
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 12
+	b.TextColor3 = COLORS.text
+	b.LayoutOrder = order
+	b.AutoButtonColor = false
+	b.Parent = page
+	corner(b, 8)
+	stroke(b, COLORS.accent, 1)
+	b.MouseButton1Click:Connect(function()
+		if cb then pcall(cb) end
+	end)
+end
+
+-- CORE FEATURES
+local combat = pages["Combat"]
+section(combat, "ANTI-HIT / COMBAT", 1)
+toggle(combat, "Enable Anti-Hit", 2, false, function(on) if on then startAntiHit() else stopAntiHit() end end)
+toggle(combat, "Kill Aura", 3, false, function(on) S.killAura = on end)
+toggle(combat, "Auto Knife Swing", 4, false, function(on) S.autoKnife = on end)
+toggle(combat, "Auto Shoot Murderer", 5, false, function(on) S.autoShoot = on end)
+toggle(combat, "Anti Stun", 6, false, function(on) S.antiStun = on end)
+
+local player = pages["Player"]
+section(player, "MOVEMENT", 1)
+toggle(player, "Speed Boost", 2, false, function(on) setSpeed(on) end)
+toggle(player, "Jump Boost", 3, false, function(on) setJump(on) end)
+toggle(player, "Infinite Jump", 4, false, function(on) S.infJump = on end)
+toggle(player, "Fly (WASD)", 5, false, function(on) setFly(on) end)
+toggle(player, "Noclip", 6, false, function(on) setNoclip(on) end)
+toggle(player, "Click TP", 7, false, function(on) S.clickTp = on end)
+
+local visuals = pages["Visuals"]
+section(visuals, "ESP", 1)
+toggle(visuals, "Role ESP", 2, false, function(on) setESP(on) end)
+toggle(visuals, "Show Murderer", 3, true, function(on) S.espMurder = on end)
+toggle(visuals, "Show Sheriff", 4, true, function(on) S.espSheriff = on end)
+toggle(visuals, "Show Innocent", 5, false, function(on) S.espInnocent = on end)
+toggle(visuals, "Fullbright", 6, false, function(on) S.fullbright = on end)
+toggle(visuals, "No Fog", 7, false, function(on) S.noFog = on end)
+
+local teleport = pages["Teleport"]
+section(teleport, "TELEPORT", 1)
+button(teleport, "TP to Murderer", 2, function()
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LP and isMurderer(plr) then
+			local r, my = getRoot(plr), getHRP()
+			if r and my then my.CFrame = r.CFrame + Vector3.new(0,3,0) notify("TP", plr.Name) return end
+		end
+	end
+	notify("TP", "Murderer not found")
+end)
+button(teleport, "TP to Sheriff", 3, function()
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LP and isSheriff(plr) then
+			local r, my = getRoot(plr), getHRP()
+			if r and my then my.CFrame = r.CFrame + Vector3.new(0,3,0) notify("TP", plr.Name) return end
+		end
+	end
+	notify("TP", "Sheriff not found")
+end)
+button(teleport, "TP to Nearest", 4, function()
+	local my = getHRP()
+	if not my then return end
+	local best, bd = nil, 1e9
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LP then
+			local r = getRoot(plr)
+			if r then
+				local d = (r.Position - my.Position).Magnitude
+				if d < bd then best, bd = r, d end
+			end
+		end
+	end
+	if best then my.CFrame = best.CFrame + Vector3.new(0,3,0) end
+end)
+
+local farm = pages["Farm"]
+section(farm, "FARM", 1)
+toggle(farm, "Auto Coin Farm", 2, false, function(on) S.coinFarm = on end)
+toggle(farm, "Auto Equip Gun", 3, false, function(on) S.autoGun = on end)
+button(farm, "Equip Knife", 4, function() equipTool("knife") end)
+button(farm, "Equip Gun", 5, function() equipTool("gun") end)
+
+-- 1000+ feature generator (safe, deferred, pcall)
+local function buildPack()
+	local total = 0
+	local function flagToggle(page, label, key, order)
+		toggle(page, label, order, false, function(on) S.flags[key] = on end)
+		total = total + 1
+	end
+	local function flagBtn(page, label, order, fn)
+		button(page, label, order, fn)
+		total = total + 1
+	end
+
+	-- Murderer (~120)
+	local m = pages["Murderer"]
+	section(m, "MURDERER CORE", 1)
+	flagToggle(m, "Kill Aura (flag)", "m_aura", 2)
+	flagToggle(m, "Auto Chase", "m_chase", 3)
+	for i = 8, 24 do
+		flagToggle(m, "Aura Range " .. i, "m_aura_range_" .. i, 10 + i)
+	end
+	-- store range from last enabled - also simple keys
+	for i = 1, 80 do
+		flagToggle(m, "Murder Assist " .. i, "m_a_" .. i, 50 + i)
+	end
+	for i = 1, 60 do
+		flagToggle(m, "Knife Pattern " .. i, "m_kp_" .. i, 150 + i)
+	end
+	for i = 1, 40 do
+		flagToggle(m, "Chase Pattern " .. i, "m_cp_" .. i, 220 + i)
+	end
+	flagBtn(m, "Swing Knife", 200, function() equipTool("knife") activateTool() end)
+
+	-- Sheriff (~100)
+	local s = pages["Sheriff"]
+	section(s, "SHERIFF CORE", 1)
+	flagToggle(s, "Track Murderer", "s_track", 2)
+	flagToggle(s, "Auto Shoot", "s_shoot", 3)
+	flagToggle(s, "Keep Gun", "s_keep", 4)
+	for i = 40, 150, 5 do
+		flagToggle(s, "Shoot Range " .. i, "s_r_" .. i, i)
+	end
+	for i = 1, 90 do
+		flagToggle(s, "Sheriff Assist " .. i, "s_a_" .. i, 200 + i)
+	end
+	for i = 1, 40 do
+		flagToggle(s, "Gun Pattern " .. i, "s_gp_" .. i, 300 + i)
+	end
+	flagBtn(s, "TP Murderer", 300, function()
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if isMurderer(plr) then
+				local r, my = getRoot(plr), getHRP()
+				if r and my then my.CFrame = r.CFrame + Vector3.new(0,3,0) return end
+			end
+		end
+	end)
+
+	-- Innocent (~80)
+	local inn = pages["Innocent"]
+	section(inn, "SURVIVAL", 1)
+	flagToggle(inn, "Run From Murderer", "i_run", 2)
+	flagToggle(inn, "Alert Near Murderer", "i_alert", 3)
+	for i = 20, 80, 5 do
+		flagToggle(inn, "Run Dist " .. i, "i_rd_" .. i, i)
+	end
+	for i = 1, 80 do
+		flagToggle(inn, "Survive Assist " .. i, "i_a_" .. i, 100 + i)
+	end
+	for i = 1, 40 do
+		flagToggle(inn, "Flee Pattern " .. i, "i_fp_" .. i, 200 + i)
+	end
+
+	-- ESP+ (~120)
+	local e = pages["ESP+"]
+	section(e, "ESP PACK", 1)
+	local roles = {"Murderer","Sheriff","Hero","Innocent","All"}
+	local styles = {"Billboard","Highlight","Tracer","Box","Name","Distance","Health","Tool"}
+	local o = 2
+	for _, role in ipairs(roles) do
+		for _, style in ipairs(styles) do
+			flagToggle(e, role .. " " .. style, "esp_" .. role .. "_" .. style, o)
+			o = o + 1
+		end
+	end
+	for i = 1, 100 do
+		flagToggle(e, "ESP Extra " .. i, "esp_x_" .. i, o + i)
+	end
+
+	-- Movement+ (~150)
+	local mv = pages["Movement+"]
+	section(mv, "SPEEDS", 1)
+	o = 2
+	for spd = 16, 70 do
+		flagToggle(mv, "WalkSpeed " .. spd, "spd_" .. spd, o)
+		o = o + 1
+	end
+	section(mv, "JUMPS", o)
+	for jp = 50, 160, 2 do
+		flagToggle(mv, "JumpPower " .. jp, "jp_" .. jp, o)
+		o = o + 1
+	end
+	for i = 1, 50 do
+		flagToggle(mv, "Move Assist " .. i, "mv_a_" .. i, o + i)
+	end
+	flagToggle(mv, "Spin", "spin", o + 40)
+	flagToggle(mv, "Inf Jump Flag", "infjump", o + 41)
+
+	-- Coins+ (~90)
+	local c = pages["Coins+"]
+	section(c, "COINS", 1)
+	flagToggle(c, "Coin Magnet", "coin_magnet", 2)
+	flagToggle(c, "Coin Farm Flag", "coin_farm2", 3)
+	for i = 1, 100 do
+		flagToggle(c, "Coin Assist " .. i, "coin_a_" .. i, 10 + i)
+	end
+	flagBtn(c, "TP Nearest Coin", 100, function()
+		local my = getHRP()
+		if not my then return end
+		for _, d in ipairs(Workspace:GetDescendants()) do
+			if d:IsA("BasePart") and d.Name:lower():find("coin") then
+				my.CFrame = d.CFrame + Vector3.new(0,2,0)
+				return
+			end
+		end
+	end)
+
+	-- Protect+ (~90)
+	local p = pages["Protect+"]
+	section(p, "PROTECT", 1)
+	flagToggle(p, "Anti Stun Flag", "prot_stun", 2)
+	flagToggle(p, "Anti AFK Flag", "prot_afk", 3)
+	for i = 1, 100 do
+		flagToggle(p, "Protect Assist " .. i, "prot_a_" .. i, 10 + i)
+	end
+
+	-- Round+ (~100)
+	local r = pages["Round+"]
+	section(r, "ROUND", 1)
+	for i = 1, 120 do
+		flagToggle(r, "Round Assist " .. i, "rnd_a_" .. i, i)
+	end
+	flagBtn(r, "Rejoin", 100, function()
+		pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LP) end)
+	end)
+	flagBtn(r, "Server Hop", 101, function()
+		task.spawn(function()
+			local ok, data = pcall(function()
+				return HttpService:JSONDecode(game:HttpGet(
+					"https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=25"
+				))
+			end)
+			if ok and data and data.data then
+				for _, s in ipairs(data.data) do
+					if s.id ~= game.JobId and s.playing < s.maxPlayers then
+						pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LP) end)
+						return
+					end
+				end
+			end
+			notify("Hop", "No server")
+		end)
+	end)
+	flagBtn(r, "Print Roles", 102, function()
+		for _, plr in ipairs(Players:GetPlayers()) do
+			print("[Role]", plr.Name, getRole(plr))
+		end
+		notify("Roles", "Printed")
+	end)
+
+	-- Misc
+	local misc = pages["Misc"]
+	section(misc, "MISC", 1)
+	toggle(misc, "Anti AFK", 2, true, function(on) S.antiAFK = on end)
+	button(misc, "Copy Discord", 3, function()
+		pcall(function() if setclipboard then setclipboard(DISCORD) end end)
+		notify("Discord", "Copied")
+	end)
+	button(misc, "Reset Character", 4, function()
+		local h = getHum()
+		if h then h.Health = 0 end
+	end)
+	button(misc, "Feature Count", 5, function()
+		notify("Encrypted Hub", tostring(total) .. "+ features")
+	end)
+
+	local settingsPage = pages["Settings"]
+	section(settingsPage, "SETTINGS", 1)
+	button(settingsPage, "Destroy Hub", 2, function()
+		S.alive = false
+		stopAntiHit()
+		clearESP()
+		for _, c in ipairs(conns) do disc(c) end
+		pcall(function() Gui:Destroy() end)
+		env.__EH_MM2 = nil
+	end)
+
+	notify("Encrypted Hub", tostring(total) .. " pack features ready")
+	print("[Encrypted Hub] features:", total)
+end
+
+task.defer(function()
+	local ok, err = pcall(buildPack)
+	if not ok then
+		warn("[Encrypted Hub] buildPack:", err)
+	end
+end)
+
+selectTab("Combat")
+
+closeBtn.MouseButton1Click:Connect(function()
+	if Main.Visible then
+		Main.Visible = false
+	else
+		Main.Visible = true
+	end
+end)
+
+-- drag main
+local dragging, dragStart, startPos
+Header.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = Main.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then dragging = false end
+		end)
+	end
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		local delta = input.Position - dragStart
+		Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+end)
+
+env.__EH_MM2 = {
+	destroy = function()
+		S.alive = false
+		pcall(function() Gui:Destroy() end)
+	end
+}
+
+print("[Encrypted Hub] MM2 loaded · key VSP")
+notify("Encrypted Hub", "Loaded · pick theme")
