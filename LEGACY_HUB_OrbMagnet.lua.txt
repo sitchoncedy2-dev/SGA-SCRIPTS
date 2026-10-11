@@ -1,0 +1,498 @@
+--[[
+  LEGACY HUB · PS99 Lucky Orb Magnet + Collect
+  Real remote: Network["Orbs: Collect"]:FireServer({ids})
+  Path: Workspace.__THINGS.Orbs
+  key: VSP
+]]
+
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local VirtualUser = game:GetService("VirtualUser")
+
+local LP = Players.LocalPlayer
+local KEY = "VSP"
+
+repeat task.wait() until game:IsLoaded()
+task.wait(0.5)
+
+local Network = RS:FindFirstChild("Network") or RS:WaitForChild("Network", 25)
+local Things = Workspace:FindFirstChild("__THINGS") or Workspace:WaitForChild("__THINGS", 25)
+
+local function notify(t, m)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = tostring(t),
+			Text = tostring(m),
+			Duration = 3
+		})
+	end)
+end
+
+local function getHRP()
+	local c = LP.Character
+	if not c then return nil end
+	return c:FindFirstChild("HumanoidRootPart")
+end
+
+local function getOrbsFolder()
+	if not Things then
+		Things = Workspace:FindFirstChild("__THINGS")
+	end
+	if not Things then return nil end
+	return Things:FindFirstChild("Orbs")
+end
+
+--[[
+  REAL LOGIC (from open PS99 sources e.g. firedvl):
+  1. Orbs live in Workspace.__THINGS.Orbs
+  2. Each orb.Name is a number string = orb id
+  3. Collect remote:
+       Network["Orbs: Collect"]:FireServer({ id1, id2, ... })
+  4. Client destroys orb after queuing id
+  Magnet step: move orb parts to player so magnet/range checks pass, then claim
+]]
+
+local function claimIds(ids)
+	if not ids or #ids == 0 then return end
+	if not Network then return end
+	local remote = Network:FindFirstChild("Orbs: Collect")
+	if not remote then return end
+	pcall(function()
+		remote:FireServer(ids)
+	end)
+end
+
+local function magnetAndCollect()
+	local folder = getOrbsFolder()
+	if not folder then return 0 end
+	local hrp = getHRP()
+	if not hrp then return 0 end
+
+	local ids = {}
+	local kids = folder:GetChildren()
+	local i
+	for i = 1, #kids do
+		local orb = kids[i]
+		local id = tonumber(orb.Name)
+		if id then
+			-- MAGNET: pull orb to player
+			pcall(function()
+				if orb:IsA("BasePart") then
+					orb.CFrame = hrp.CFrame
+					orb.Anchored = true
+				else
+					local part = orb:FindFirstChildWhichIsA("BasePart", true)
+					if part then
+						part.CFrame = hrp.CFrame
+						part.Anchored = true
+					end
+					if orb:IsA("Model") and orb.PrimaryPart then
+						orb:SetPrimaryPartCFrame(hrp.CFrame)
+					elseif orb:IsA("Model") then
+						pcall(function()
+							orb:PivotTo(hrp.CFrame)
+						end)
+					end
+				end
+			end)
+			table.insert(ids, id)
+		end
+	end
+
+	if #ids > 0 then
+		claimIds(ids)
+		-- destroy after claim
+		for i = 1, #kids do
+			local orb = kids[i]
+			if tonumber(orb.Name) then
+				pcall(function()
+					orb:Destroy()
+				end)
+			end
+		end
+	end
+	return #ids
+end
+
+-- instant claim when a new orb spawns
+local function hookOrbs(folder)
+	if not folder then return end
+	folder.ChildAdded:Connect(function(orb)
+		task.wait(0.03)
+		if not orb or not orb.Parent then return end
+		local id = tonumber(orb.Name)
+		if not id then return end
+		local hrp = getHRP()
+		if hrp then
+			pcall(function()
+				if orb:IsA("BasePart") then
+					orb.CFrame = hrp.CFrame
+				else
+					local part = orb:FindFirstChildWhichIsA("BasePart", true)
+					if part then part.CFrame = hrp.CFrame end
+					pcall(function()
+						if orb:IsA("Model") then
+							orb:PivotTo(hrp.CFrame)
+						end
+					end)
+				end
+			end)
+		end
+		claimIds({id})
+		pcall(function()
+			orb:Destroy()
+		end)
+	end)
+end
+
+if Things then
+	local of = Things:FindFirstChild("Orbs")
+	if of then hookOrbs(of) end
+	Things.ChildAdded:Connect(function(ch)
+		if ch.Name == "Orbs" then
+			hookOrbs(ch)
+		end
+	end)
+end
+
+-- also claim lootbags while we're at it (same zone drops)
+local function collectLootbags()
+	if not Things then return end
+	local folder = Things:FindFirstChild("Lootbags")
+	if not folder then return end
+	local bags = {}
+	local has = false
+	local kids = folder:GetChildren()
+	local i
+	for i = 1, #kids do
+		local bag = kids[i]
+		bags[bag.Name] = bag.Name
+		has = true
+		pcall(function() bag:Destroy() end)
+	end
+	if has and Network then
+		local r = Network:FindFirstChild("Lootbags_Claim")
+		if r then
+			pcall(function()
+				r:FireServer(bags)
+			end)
+		end
+	end
+end
+
+local running = false
+local totalClaimed = 0
+
+local function startLoop()
+	if running then return end
+	running = true
+	task.spawn(function()
+		while running do
+			local n = 0
+			pcall(function()
+				n = magnetAndCollect()
+			end)
+			pcall(collectLootbags)
+			if n > 0 then
+				totalClaimed = totalClaimed + n
+			end
+			task.wait(0.1)
+		end
+	end)
+end
+
+local function stopLoop()
+	running = false
+end
+
+-- anti afk
+LP.Idled:Connect(function()
+	pcall(function()
+		VirtualUser:CaptureController()
+		VirtualUser:ClickButton2(Vector2.new())
+	end)
+end)
+
+-- ===== minimal UI =====
+local parentGui = CoreGui
+pcall(function()
+	if gethui then parentGui = gethui() end
+end)
+
+local function mk(c, p, parent)
+	local o = Instance.new(c)
+	for k, v in pairs(p) do o[k] = v end
+	if parent then o.Parent = parent end
+	return o
+end
+local function corner(o, r)
+	local u = Instance.new("UICorner")
+	u.CornerRadius = UDim.new(0, r or 4)
+	u.Parent = o
+end
+
+local ACC = Color3.fromRGB(80, 220, 120)
+local BG = Color3.fromRGB(12, 14, 12)
+local PN = Color3.fromRGB(20, 24, 20)
+local TX = Color3.fromRGB(230, 240, 230)
+local DM = Color3.fromRGB(120, 140, 120)
+
+local Gate = mk("ScreenGui", {
+	Name = "LH_OrbGate",
+	ResetOnSpawn = false,
+	IgnoreGuiInset = true,
+	DisplayOrder = 9999,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+}, parentGui)
+
+mk("Frame", {
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundColor3 = Color3.new(0, 0, 0),
+	BackgroundTransparency = 0.5,
+	BorderSizePixel = 0,
+}, Gate)
+
+local Card = mk("Frame", {
+	Size = UDim2.new(0, 280, 0, 170),
+	Position = UDim2.new(0.5, -140, 0.5, -85),
+	BackgroundColor3 = BG,
+	BorderSizePixel = 0,
+}, Gate)
+corner(Card, 6)
+mk("UIStroke", {Color = ACC, Thickness = 1}, Card)
+
+mk("TextLabel", {
+	Size = UDim2.new(1, -20, 0, 24),
+	Position = UDim2.new(0, 10, 0, 10),
+	BackgroundTransparency = 1,
+	Text = "LUCKY ORB MAGNET",
+	Font = Enum.Font.GothamBold,
+	TextSize = 15,
+	TextColor3 = ACC,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, Card)
+
+mk("TextLabel", {
+	Size = UDim2.new(1, -20, 0, 14),
+	Position = UDim2.new(0, 10, 0, 34),
+	BackgroundTransparency = 1,
+	Text = "key VSP  ·  Orbs: Collect",
+	Font = Enum.Font.Gotham,
+	TextSize = 11,
+	TextColor3 = DM,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, Card)
+
+local Box = mk("TextBox", {
+	Size = UDim2.new(1, -20, 0, 34),
+	Position = UDim2.new(0, 10, 0, 56),
+	BackgroundColor3 = PN,
+	BorderSizePixel = 0,
+	Text = "",
+	PlaceholderText = "key",
+	Font = Enum.Font.Gotham,
+	TextSize = 13,
+	TextColor3 = TX,
+	ClearTextOnFocus = false,
+}, Card)
+corner(Box, 4)
+
+local Status = mk("TextLabel", {
+	Size = UDim2.new(1, -20, 0, 14),
+	Position = UDim2.new(0, 10, 0, 96),
+	BackgroundTransparency = 1,
+	Text = "",
+	Font = Enum.Font.Gotham,
+	TextSize = 11,
+	TextColor3 = DM,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, Card)
+
+local Enter = mk("TextButton", {
+	Size = UDim2.new(1, -20, 0, 34),
+	Position = UDim2.new(0, 10, 0, 118),
+	BackgroundColor3 = PN,
+	BorderSizePixel = 0,
+	Text = "START",
+	Font = Enum.Font.GothamBold,
+	TextSize = 13,
+	TextColor3 = ACC,
+}, Card)
+corner(Enter, 4)
+
+local function openMain()
+	Gate:Destroy()
+
+	local Gui = mk("ScreenGui", {
+		Name = "LH_OrbMain",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		DisplayOrder = 100,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	}, parentGui)
+
+	local Main = mk("Frame", {
+		Size = UDim2.new(0, 260, 0, 200),
+		Position = UDim2.new(0.5, -130, 0.15, 0),
+		BackgroundColor3 = BG,
+		BorderSizePixel = 0,
+		Active = true,
+	}, Gui)
+	corner(Main, 6)
+	mk("UIStroke", {Color = ACC, Thickness = 1}, Main)
+
+	local Head = mk("Frame", {
+		Size = UDim2.new(1, 0, 0, 32),
+		BackgroundColor3 = PN,
+		BorderSizePixel = 0,
+	}, Main)
+	mk("TextLabel", {
+		Size = UDim2.new(1, -36, 1, 0),
+		Position = UDim2.new(0, 10, 0, 0),
+		BackgroundTransparency = 1,
+		Text = "ORB MAGNET + COLLECT",
+		Font = Enum.Font.GothamBold,
+		TextSize = 12,
+		TextColor3 = ACC,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, Head)
+
+	local Info = mk("TextLabel", {
+		Size = UDim2.new(1, -20, 0, 40),
+		Position = UDim2.new(0, 10, 0, 40),
+		BackgroundTransparency = 1,
+		Text = "Net: ...",
+		Font = Enum.Font.Gotham,
+		TextSize = 12,
+		TextColor3 = TX,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+	}, Main)
+
+	local function refreshInfo()
+		local of = getOrbsFolder()
+		local count = 0
+		if of then count = #of:GetChildren() end
+		local hasRemote = Network and Network:FindFirstChild("Orbs: Collect") ~= nil
+		Info.Text = "Orbs in world: " .. tostring(count)
+			.. "\nRemote: " .. (hasRemote and "OK" or "MISSING")
+			.. "\nClaimed this session: " .. tostring(totalClaimed)
+			.. "\nStatus: " .. (running and "RUNNING" or "stopped")
+	end
+
+	local Toggle = mk("TextButton", {
+		Size = UDim2.new(1, -20, 0, 34),
+		Position = UDim2.new(0, 10, 0, 90),
+		BackgroundColor3 = PN,
+		BorderSizePixel = 0,
+		Text = "START MAGNET",
+		Font = Enum.Font.GothamBold,
+		TextSize = 13,
+		TextColor3 = ACC,
+	}, Main)
+	corner(Toggle, 4)
+
+	Toggle.MouseButton1Click:Connect(function()
+		if running then
+			stopLoop()
+			Toggle.Text = "START MAGNET"
+			Toggle.TextColor3 = ACC
+		else
+			startLoop()
+			Toggle.Text = "STOP"
+			Toggle.TextColor3 = Color3.fromRGB(220, 100, 100)
+		end
+		refreshInfo()
+	end)
+
+	local Once = mk("TextButton", {
+		Size = UDim2.new(1, -20, 0, 30),
+		Position = UDim2.new(0, 10, 0, 130),
+		BackgroundColor3 = PN,
+		BorderSizePixel = 0,
+		Text = "COLLECT ONCE",
+		Font = Enum.Font.Gotham,
+		TextSize = 12,
+		TextColor3 = TX,
+	}, Main)
+	corner(Once, 4)
+	Once.MouseButton1Click:Connect(function()
+		local n = magnetAndCollect()
+		collectLootbags()
+		totalClaimed = totalClaimed + n
+		notify("orbs", "claimed " .. tostring(n))
+		refreshInfo()
+	end)
+
+	local Ref = mk("TextButton", {
+		Size = UDim2.new(1, -20, 0, 26),
+		Position = UDim2.new(0, 10, 0, 166),
+		BackgroundTransparency = 1,
+		Text = "refresh status",
+		Font = Enum.Font.Gotham,
+		TextSize = 11,
+		TextColor3 = DM,
+	}, Main)
+	Ref.MouseButton1Click:Connect(refreshInfo)
+
+	task.spawn(function()
+		while Main.Parent do
+			task.wait(1)
+			refreshInfo()
+		end
+	end)
+
+	-- drag
+	local dragging, dragStart, startPos
+	Head.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = Main.Position
+		end
+	end)
+	Head.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+	UIS.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local d = input.Position - dragStart
+			Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+		end
+	end)
+
+	-- auto start
+	startLoop()
+	Toggle.Text = "STOP"
+	Toggle.TextColor3 = Color3.fromRGB(220, 100, 100)
+	refreshInfo()
+	notify("orb", "magnet running")
+end
+
+Enter.MouseButton1Click:Connect(function()
+	local k = Box.Text or ""
+	k = string.gsub(k, "%s+", "")
+	if k == KEY then
+		openMain()
+	else
+		Status.Text = "wrong key"
+		Status.TextColor3 = Color3.fromRGB(220, 80, 80)
+	end
+end)
+
+Box.FocusLost:Connect(function(e)
+	if e then
+		local k = Box.Text or ""
+		k = string.gsub(k, "%s+", "")
+		if k == KEY then openMain() end
+	end
+end)
+
+notify("orb magnet", "key VSP")
