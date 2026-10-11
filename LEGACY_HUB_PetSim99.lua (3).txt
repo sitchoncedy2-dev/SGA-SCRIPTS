@@ -1,0 +1,770 @@
+--[[
+  LEGACY HUB · PS99 · Delta safe
+  key: VSP
+]]
+
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+local VirtualUser = game:GetService("VirtualUser")
+local TeleportService = game:GetService("TeleportService")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local Lighting = game:GetService("Lighting")
+
+local LP = Players.LocalPlayer
+local KEY = "VSP"
+local DISCORD = "https://discord.gg/suCUkHNZmv"
+
+repeat task.wait() until game:IsLoaded()
+task.wait(1)
+
+local Network = RS:FindFirstChild("Network")
+if not Network then
+	Network = RS:WaitForChild("Network", 20)
+end
+
+local Things = Workspace:FindFirstChild("__THINGS")
+if not Things then
+	Things = Workspace:WaitForChild("__THINGS", 20)
+end
+
+local function notify(t, m)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = tostring(t),
+			Text = tostring(m),
+			Duration = 4
+		})
+	end)
+end
+
+local function Fire(name, a, b, c)
+	if not Network then return end
+	local r = Network:FindFirstChild(name)
+	if not r then return end
+	pcall(function()
+		if a ~= nil and b ~= nil and c ~= nil then
+			r:FireServer(a, b, c)
+		elseif a ~= nil and b ~= nil then
+			r:FireServer(a, b)
+		elseif a ~= nil then
+			r:FireServer(a)
+		else
+			r:FireServer()
+		end
+	end)
+end
+
+local function Invoke(name, a, b, c)
+	if not Network then return end
+	local r = Network:FindFirstChild(name)
+	if not r then return end
+	pcall(function()
+		if a ~= nil and b ~= nil and c ~= nil then
+			r:InvokeServer(a, b, c)
+		elseif a ~= nil and b ~= nil then
+			r:InvokeServer(a, b)
+		elseif a ~= nil then
+			r:InvokeServer(a)
+		else
+			r:InvokeServer()
+		end
+	end)
+end
+
+local S = {
+	alive = true,
+	autoFarm = false,
+	autoCollect = false,
+	autoHatch = false,
+	autoClaim = false,
+	farmDelay = 0.12,
+	hatchDelay = 0.5,
+	eggName = "Cracked Egg",
+	hatchAmount = 1,
+	speed = false,
+	speedVal = 28,
+	fly = false,
+	flySpd = 50,
+	noclip = false,
+	infJump = false,
+	antiAfk = true,
+	fullbright = false,
+}
+
+local function getHRP()
+	local c = LP.Character
+	if not c then return nil end
+	return c:FindFirstChild("HumanoidRootPart")
+end
+
+local function getHum()
+	local c = LP.Character
+	if not c then return nil end
+	return c:FindFirstChildOfClass("Humanoid")
+end
+
+-- FARM: Breakables_PlayerDealDamage
+local function doFarm()
+	if not Things then return end
+	local folder = Things:FindFirstChild("Breakables")
+	if not folder then return end
+	local hrp = getHRP()
+	if not hrp then return end
+	local best = nil
+	local bestD = 999999
+	local kids = folder:GetChildren()
+	local i
+	for i = 1, #kids do
+		local br = kids[i]
+		local part = br:FindFirstChildWhichIsA("MeshPart")
+		if not part then
+			part = br:FindFirstChildWhichIsA("BasePart")
+		end
+		if part then
+			local d = (part.Position - hrp.Position).Magnitude
+			if d < bestD then
+				bestD = d
+				best = br
+			end
+		end
+	end
+	if best then
+		if bestD > 90 then
+			local part = best:FindFirstChildWhichIsA("MeshPart") or best:FindFirstChildWhichIsA("BasePart")
+			if part then
+				pcall(function()
+					hrp.CFrame = CFrame.new(part.Position + Vector3.new(0, 6, 0))
+				end)
+			end
+		end
+		Fire("Breakables_PlayerDealDamage", best.Name)
+	end
+end
+
+-- ORBS: "Orbs: Collect"
+local function doOrbs()
+	if not Things then return end
+	local folder = Things:FindFirstChild("Orbs")
+	if not folder then return end
+	local ids = {}
+	local kids = folder:GetChildren()
+	local i
+	for i = 1, #kids do
+		local orb = kids[i]
+		local id = tonumber(orb.Name)
+		if id then
+			table.insert(ids, id)
+			pcall(function() orb:Destroy() end)
+		end
+	end
+	if #ids > 0 then
+		Fire("Orbs: Collect", ids)
+	end
+end
+
+-- LOOTBAGS
+local function doLoot()
+	if not Things then return end
+	local folder = Things:FindFirstChild("Lootbags")
+	if not folder then return end
+	local bags = {}
+	local has = false
+	local kids = folder:GetChildren()
+	local i
+	for i = 1, #kids do
+		local bag = kids[i]
+		bags[bag.Name] = bag.Name
+		has = true
+		pcall(function() bag:Destroy() end)
+	end
+	if has then
+		Fire("Lootbags_Claim", bags)
+	end
+end
+
+local function doCollect()
+	doOrbs()
+	doLoot()
+end
+
+-- HATCH
+local function doHatch()
+	Invoke("Eggs_RequestPurchase", S.eggName, S.hatchAmount)
+	pcall(function()
+		local n
+		for n = 1, 6 do
+			VirtualUser:Button1Down(Vector2.new(0, 0))
+			VirtualUser:Button1Up(Vector2.new(0, 0))
+			task.wait(0.04)
+		end
+	end)
+end
+
+local function doClaim()
+	local i
+	for i = 1, 12 do
+		Invoke("Redeem Free Gift", i)
+	end
+	Fire("Spinny Wheel: Request Ticket", "StarterWheel")
+end
+
+-- loops
+task.spawn(function()
+	while S.alive do
+		task.wait(S.farmDelay)
+		if S.autoFarm then
+			pcall(doFarm)
+		end
+	end
+end)
+
+task.spawn(function()
+	while S.alive do
+		task.wait(0.25)
+		if S.autoCollect then
+			pcall(doCollect)
+		end
+	end
+end)
+
+task.spawn(function()
+	while S.alive do
+		task.wait(S.hatchDelay)
+		if S.autoHatch then
+			pcall(doHatch)
+		end
+	end
+end)
+
+task.spawn(function()
+	while S.alive do
+		task.wait(20)
+		if S.autoClaim then
+			pcall(doClaim)
+		end
+	end
+end)
+
+-- speed
+task.spawn(function()
+	while S.alive do
+		task.wait(0.1)
+		if S.speed then
+			local h = getHum()
+			if h then
+				h.WalkSpeed = S.speedVal
+			end
+		end
+	end
+end)
+
+-- fly
+local flyBV = nil
+local flyBG = nil
+task.spawn(function()
+	while S.alive do
+		task.wait(0.03)
+		if S.fly then
+			local r = getHRP()
+			if r then
+				if not flyBV or flyBV.Parent ~= r then
+					if flyBV then pcall(function() flyBV:Destroy() end) end
+					if flyBG then pcall(function() flyBG:Destroy() end) end
+					flyBV = Instance.new("BodyVelocity")
+					flyBV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+					flyBV.Velocity = Vector3.new(0, 0, 0)
+					flyBV.Parent = r
+					flyBG = Instance.new("BodyGyro")
+					flyBG.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+					flyBG.P = 2000
+					flyBG.Parent = r
+				end
+				local cam = Workspace.CurrentCamera
+				if cam and flyBV then
+					local d = Vector3.new(0, 0, 0)
+					if UIS:IsKeyDown(Enum.KeyCode.W) then d = d + cam.CFrame.LookVector end
+					if UIS:IsKeyDown(Enum.KeyCode.S) then d = d - cam.CFrame.LookVector end
+					if UIS:IsKeyDown(Enum.KeyCode.A) then d = d - cam.CFrame.RightVector end
+					if UIS:IsKeyDown(Enum.KeyCode.D) then d = d + cam.CFrame.RightVector end
+					if UIS:IsKeyDown(Enum.KeyCode.Space) then d = d + Vector3.new(0, 1, 0) end
+					if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then d = d - Vector3.new(0, 1, 0) end
+					if d.Magnitude > 0 then
+						d = d.Unit * S.flySpd
+					end
+					flyBV.Velocity = d
+					if flyBG then flyBG.CFrame = cam.CFrame end
+				end
+			end
+		else
+			if flyBV then pcall(function() flyBV:Destroy() end) flyBV = nil end
+			if flyBG then pcall(function() flyBG:Destroy() end) flyBG = nil end
+		end
+	end
+end)
+
+-- noclip
+RunService.Stepped:Connect(function()
+	if not S.noclip then return end
+	local c = LP.Character
+	if not c then return end
+	local parts = c:GetDescendants()
+	local i
+	for i = 1, #parts do
+		local p = parts[i]
+		if p:IsA("BasePart") then
+			p.CanCollide = false
+		end
+	end
+end)
+
+UIS.JumpRequest:Connect(function()
+	if not S.infJump then return end
+	local h = getHum()
+	if h then
+		h:ChangeState(Enum.HumanoidStateType.Jumping)
+	end
+end)
+
+LP.Idled:Connect(function()
+	if S.antiAfk then
+		pcall(function()
+			VirtualUser:CaptureController()
+			VirtualUser:ClickButton2(Vector2.new())
+		end)
+	end
+end)
+
+task.spawn(function()
+	while S.alive do
+		task.wait(0.5)
+		if S.fullbright then
+			pcall(function()
+				Lighting.Brightness = 2
+				Lighting.ClockTime = 14
+				Lighting.FogEnd = 100000
+				Lighting.GlobalShadows = false
+			end)
+		end
+	end
+end)
+
+-- ===== UI (simple Delta safe) =====
+local parentGui = CoreGui
+pcall(function()
+	if gethui then
+		parentGui = gethui()
+	end
+end)
+
+local function mk(class, props, parent)
+	local o = Instance.new(class)
+	for k, v in pairs(props) do
+		o[k] = v
+	end
+	if parent then o.Parent = parent end
+	return o
+end
+
+local function corner(o, r)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, r or 4)
+	c.Parent = o
+end
+
+local ACC = Color3.fromRGB(255, 140, 40)
+local BG = Color3.fromRGB(18, 12, 8)
+local PN = Color3.fromRGB(28, 18, 12)
+local TX = Color3.fromRGB(255, 230, 200)
+local DM = Color3.fromRGB(160, 130, 100)
+local OK = Color3.fromRGB(100, 180, 100)
+local OFF = Color3.fromRGB(70, 50, 40)
+
+local Gate = mk("ScreenGui", {
+	Name = "LH_Gate",
+	ResetOnSpawn = false,
+	IgnoreGuiInset = true,
+	DisplayOrder = 9999,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+}, parentGui)
+
+mk("Frame", {
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundColor3 = Color3.new(0, 0, 0),
+	BackgroundTransparency = 0.45,
+	BorderSizePixel = 0,
+}, Gate)
+
+local Card = mk("Frame", {
+	Size = UDim2.new(0, 300, 0, 200),
+	Position = UDim2.new(0.5, -150, 0.5, -100),
+	BackgroundColor3 = BG,
+	BorderSizePixel = 0,
+}, Gate)
+corner(Card, 6)
+mk("UIStroke", {Color = ACC, Thickness = 1}, Card)
+
+mk("TextLabel", {
+	Size = UDim2.new(1, -24, 0, 28),
+	Position = UDim2.new(0, 12, 0, 12),
+	BackgroundTransparency = 1,
+	Text = "LEGACY HUB · PS99",
+	Font = Enum.Font.GothamBold,
+	TextSize = 16,
+	TextColor3 = ACC,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, Card)
+
+mk("TextLabel", {
+	Size = UDim2.new(1, -24, 0, 16),
+	Position = UDim2.new(0, 12, 0, 40),
+	BackgroundTransparency = 1,
+	Text = "key = VSP",
+	Font = Enum.Font.Gotham,
+	TextSize = 12,
+	TextColor3 = DM,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, Card)
+
+local Box = mk("TextBox", {
+	Size = UDim2.new(1, -24, 0, 36),
+	Position = UDim2.new(0, 12, 0, 68),
+	BackgroundColor3 = PN,
+	BorderSizePixel = 0,
+	Text = "",
+	PlaceholderText = "enter key",
+	Font = Enum.Font.Gotham,
+	TextSize = 14,
+	TextColor3 = TX,
+	ClearTextOnFocus = false,
+}, Card)
+corner(Box, 4)
+
+local Status = mk("TextLabel", {
+	Size = UDim2.new(1, -24, 0, 16),
+	Position = UDim2.new(0, 12, 0, 110),
+	BackgroundTransparency = 1,
+	Text = "",
+	Font = Enum.Font.Gotham,
+	TextSize = 12,
+	TextColor3 = DM,
+	TextXAlignment = Enum.TextXAlignment.Left,
+}, Card)
+
+local Enter = mk("TextButton", {
+	Size = UDim2.new(1, -24, 0, 36),
+	Position = UDim2.new(0, 12, 0, 140),
+	BackgroundColor3 = PN,
+	BorderSizePixel = 0,
+	Text = "ENTER",
+	Font = Enum.Font.GothamBold,
+	TextSize = 14,
+	TextColor3 = ACC,
+	AutoButtonColor = true,
+}, Card)
+corner(Enter, 4)
+
+local function openMain()
+	Gate:Destroy()
+
+	local Gui = mk("ScreenGui", {
+		Name = "LH_PS99",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		DisplayOrder = 100,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	}, parentGui)
+
+	local Main = mk("Frame", {
+		Size = UDim2.new(0, 340, 0, 420),
+		Position = UDim2.new(0.5, -170, 0.5, -210),
+		BackgroundColor3 = BG,
+		BorderSizePixel = 0,
+		Active = true,
+	}, Gui)
+	corner(Main, 6)
+	mk("UIStroke", {Color = ACC, Thickness = 1}, Main)
+
+	local Head = mk("Frame", {
+		Size = UDim2.new(1, 0, 0, 36),
+		BackgroundColor3 = PN,
+		BorderSizePixel = 0,
+	}, Main)
+	mk("TextLabel", {
+		Size = UDim2.new(1, -40, 1, 0),
+		Position = UDim2.new(0, 10, 0, 0),
+		BackgroundTransparency = 1,
+		Text = "LEGACY / PS99",
+		Font = Enum.Font.GothamBold,
+		TextSize = 13,
+		TextColor3 = ACC,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, Head)
+	local XBtn = mk("TextButton", {
+		Size = UDim2.new(0, 28, 0, 24),
+		Position = UDim2.new(1, -32, 0.5, -12),
+		BackgroundColor3 = BG,
+		BorderSizePixel = 0,
+		Text = "X",
+		Font = Enum.Font.GothamBold,
+		TextSize = 12,
+		TextColor3 = DM,
+	}, Head)
+	corner(XBtn, 3)
+	XBtn.MouseButton1Click:Connect(function()
+		Main.Visible = not Main.Visible
+	end)
+
+	local Scroll = mk("ScrollingFrame", {
+		Size = UDim2.new(1, -16, 1, -48),
+		Position = UDim2.new(0, 8, 0, 42),
+		BackgroundColor3 = PN,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 3,
+		CanvasSize = UDim2.new(0, 0, 0, 800),
+	}, Main)
+	corner(Scroll, 4)
+
+	local y = 8
+	local function addLabel(txt)
+		mk("TextLabel", {
+			Size = UDim2.new(1, -16, 0, 18),
+			Position = UDim2.new(0, 8, 0, y),
+			BackgroundTransparency = 1,
+			Text = txt,
+			Font = Enum.Font.GothamBold,
+			TextSize = 11,
+			TextColor3 = ACC,
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}, Scroll)
+		y = y + 22
+	end
+
+	local function addToggle(txt, get, set)
+		local row = mk("TextButton", {
+			Size = UDim2.new(1, -16, 0, 30),
+			Position = UDim2.new(0, 8, 0, y),
+			BackgroundColor3 = BG,
+			BorderSizePixel = 0,
+			Text = "",
+			AutoButtonColor = false,
+		}, Scroll)
+		corner(row, 3)
+		mk("TextLabel", {
+			Size = UDim2.new(1, -50, 1, 0),
+			Position = UDim2.new(0, 8, 0, 0),
+			BackgroundTransparency = 1,
+			Text = txt,
+			Font = Enum.Font.Gotham,
+			TextSize = 12,
+			TextColor3 = TX,
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}, row)
+		local mark = mk("TextLabel", {
+			Size = UDim2.new(0, 34, 0, 18),
+			Position = UDim2.new(1, -42, 0.5, -9),
+			BackgroundColor3 = OFF,
+			BorderSizePixel = 0,
+			Text = "OFF",
+			Font = Enum.Font.GothamBold,
+			TextSize = 10,
+			TextColor3 = DM,
+		}, row)
+		corner(mark, 3)
+		row.MouseButton1Click:Connect(function()
+			local v = not get()
+			set(v)
+			if v then
+				mark.BackgroundColor3 = OK
+				mark.Text = "ON"
+				mark.TextColor3 = Color3.new(0, 0, 0)
+			else
+				mark.BackgroundColor3 = OFF
+				mark.Text = "OFF"
+				mark.TextColor3 = DM
+			end
+		end)
+		y = y + 34
+	end
+
+	local function addBtn(txt, fn)
+		local b = mk("TextButton", {
+			Size = UDim2.new(1, -16, 0, 30),
+			Position = UDim2.new(0, 8, 0, y),
+			BackgroundColor3 = BG,
+			BorderSizePixel = 0,
+			Text = "  " .. txt,
+			Font = Enum.Font.Gotham,
+			TextSize = 12,
+			TextColor3 = TX,
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}, Scroll)
+		corner(b, 3)
+		b.MouseButton1Click:Connect(function()
+			pcall(fn)
+		end)
+		y = y + 34
+	end
+
+	local function addInput(txt, def, fn)
+		mk("TextLabel", {
+			Size = UDim2.new(1, -16, 0, 14),
+			Position = UDim2.new(0, 8, 0, y),
+			BackgroundTransparency = 1,
+			Text = txt,
+			Font = Enum.Font.Gotham,
+			TextSize = 10,
+			TextColor3 = DM,
+			TextXAlignment = Enum.TextXAlignment.Left,
+		}, Scroll)
+		y = y + 16
+		local box = mk("TextBox", {
+			Size = UDim2.new(1, -70, 0, 26),
+			Position = UDim2.new(0, 8, 0, y),
+			BackgroundColor3 = BG,
+			BorderSizePixel = 0,
+			Text = tostring(def),
+			Font = Enum.Font.Gotham,
+			TextSize = 12,
+			TextColor3 = TX,
+			ClearTextOnFocus = false,
+		}, Scroll)
+		corner(box, 3)
+		local go = mk("TextButton", {
+			Size = UDim2.new(0, 50, 0, 26),
+			Position = UDim2.new(1, -58, 0, y),
+			BackgroundColor3 = BG,
+			BorderSizePixel = 0,
+			Text = "SET",
+			Font = Enum.Font.GothamBold,
+			TextSize = 11,
+			TextColor3 = ACC,
+		}, Scroll)
+		corner(go, 3)
+		go.MouseButton1Click:Connect(function()
+			pcall(fn, box.Text)
+		end)
+		y = y + 32
+	end
+
+	addLabel("FARM")
+	addToggle("Auto Farm", function() return S.autoFarm end, function(v) S.autoFarm = v end)
+	addToggle("Auto Collect Orbs+Loot", function() return S.autoCollect end, function(v) S.autoCollect = v end)
+	addBtn("Farm Once", function() doFarm() notify("farm", "ok") end)
+	addBtn("Collect Once", function() doCollect() notify("collect", "ok") end)
+
+	addLabel("EGGS")
+	addToggle("Auto Hatch", function() return S.autoHatch end, function(v) S.autoHatch = v end)
+	addInput("Egg Name", S.eggName, function(t) S.eggName = t notify("egg", t) end)
+	addInput("Hatch Amount", tostring(S.hatchAmount), function(t)
+		local n = tonumber(t)
+		if n then S.hatchAmount = n end
+	end)
+	addBtn("Hatch Once", function() doHatch() notify("hatch", S.eggName) end)
+
+	addLabel("REWARDS")
+	addToggle("Auto Claim Gifts", function() return S.autoClaim end, function(v) S.autoClaim = v end)
+	addBtn("Claim Once", function() doClaim() notify("claim", "ok") end)
+
+	addLabel("MOVEMENT")
+	addToggle("Speed", function() return S.speed end, function(v) S.speed = v end)
+	addInput("Speed Value", tostring(S.speedVal), function(t)
+		local n = tonumber(t)
+		if n then S.speedVal = n end
+	end)
+	addToggle("Fly (WASD)", function() return S.fly end, function(v) S.fly = v end)
+	addToggle("Noclip", function() return S.noclip end, function(v) S.noclip = v end)
+	addToggle("Inf Jump", function() return S.infJump end, function(v) S.infJump = v end)
+
+	addLabel("SYSTEM")
+	addToggle("Fullbright", function() return S.fullbright end, function(v) S.fullbright = v end)
+	addToggle("Anti AFK", function() return S.antiAfk end, function(v) S.antiAfk = v end)
+	addBtn("Check Status", function()
+		local nc = 0
+		if Network then nc = #Network:GetChildren() end
+		local bc = 0
+		local oc = 0
+		if Things then
+			local b = Things:FindFirstChild("Breakables")
+			local o = Things:FindFirstChild("Orbs")
+			if b then bc = #b:GetChildren() end
+			if o then oc = #o:GetChildren() end
+		end
+		notify("status", "Net:" .. tostring(nc) .. " Brk:" .. tostring(bc) .. " Orb:" .. tostring(oc))
+	end)
+	addBtn("Rejoin", function()
+		pcall(function()
+			TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LP)
+		end)
+	end)
+	addBtn("Unload", function()
+		S.alive = false
+		Gui:Destroy()
+	end)
+
+	Scroll.CanvasSize = UDim2.new(0, 0, 0, y + 20)
+
+	-- drag
+	local dragging = false
+	local dragStart = nil
+	local startPos = nil
+	Head.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = Main.Position
+		end
+	end)
+	Head.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+	UIS.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local d = input.Position - dragStart
+			Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+		end
+	end)
+
+	UIS.InputBegan:Connect(function(input, gp)
+		if gp then return end
+		if input.KeyCode == Enum.KeyCode.RightControl then
+			Main.Visible = not Main.Visible
+		end
+	end)
+
+	local netOk = Network ~= nil
+	local thingsOk = Things ~= nil
+	notify("legacy", "Net:" .. tostring(netOk) .. " Things:" .. tostring(thingsOk))
+end
+
+Enter.MouseButton1Click:Connect(function()
+	local k = Box.Text
+	if k then
+		k = string.gsub(k, "%s+", "")
+	end
+	if k == KEY then
+		Status.Text = "ok"
+		Status.TextColor3 = OK
+		openMain()
+	else
+		Status.Text = "wrong key"
+		Status.TextColor3 = Color3.fromRGB(220, 80, 80)
+	end
+end)
+
+Box.FocusLost:Connect(function(enter)
+	if enter then
+		local k = Box.Text
+		if k then k = string.gsub(k, "%s+", "") end
+		if k == KEY then
+			openMain()
+		end
+	end
+end)
+
+notify("legacy", "key VSP")
