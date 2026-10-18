@@ -1,9 +1,5 @@
 --[[
-  LEGACY HUB · Steal an Egg
-  Game logic: SpeedHubX (full features)
-  UI + Key: LEGACY HUB
-  Key: MYNGUGU
-  Discord: https://discord.gg/wdRu36t7a
+  MYNGUUHUB GADDAMN THIS GUY NEVER PAYS    ME
 ]]
 
 repeat task.wait() until game:IsLoaded()
